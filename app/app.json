@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Hermes Mobile",
+    "slug": "hermes-mobile",
+    "scheme": "hermesmobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B0D12",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ltf92.hermesmobile",
+      "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true, "NSAllowsLocalNetworking": true },
+        "NSLocalNetworkUsageDescription": "Connect to your Hermes agent on your network."
+      }
+    },
+    "android": {
+      "package": "com.ltf92.hermesmobile",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0D12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": { "favicon": "./assets/favicon.png" },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      ["expo-camera", { "cameraPermission": "Scan the pairing QR code of your Hermes agent.", "recordAudioAndroid": false, "barcodeScannerEnabled": true }],
+      ["expo-image-picker", { "photosPermission": "Send photos to your agent.", "cameraPermission": "Take photos to send to your agent." }],
+      ["expo-notifications", { "color": "#F5B544" }]
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}

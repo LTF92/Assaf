@@ -229,3 +229,25 @@ async def test_media_download_requires_token_and_chat(bridge, tmp_path):
     assert await asyncio.to_thread(get, None) == (401, b"")
     assert (await asyncio.to_thread(get, guest_token))[0] == 404
     assert await asyncio.to_thread(get, owner_token) == (200, b"%PDF-1.4 hello")
+
+
+async def test_owner_can_invite_list_and_revoke_guests(bridge):
+    reg, store, fake, server = bridge
+    _, owner_token = reg.pair("phone")
+    _, guest_token = reg.pair("g", role="guest")
+    ws = await _connect(server, owner_token)
+    await _recv_until(ws, "sync")
+    await ws.send(json.dumps({"type": "invite", "name": "Ahmed", "ref": 1}))
+    inv = await _recv_until(ws, "invite")
+    assert inv["role"] == "guest" and reg.authenticate(inv["token"]).name == "Ahmed"
+    await ws.send(json.dumps({"type": "devices"}))
+    names = {d["name"] for d in (await _recv_until(ws, "devices"))["devices"]}
+    assert names == {"phone", "g", "Ahmed"}
+    wg = await _connect(server, guest_token)
+    await _recv_until(wg, "sync")
+    await wg.send(json.dumps({"type": "invite", "name": "x"}))
+    assert (await _recv_until(wg, "error"))["code"] == "forbidden"
+    await ws.send(json.dumps({"type": "revoke", "device_id": inv["device"]["id"]}))
+    assert "Ahmed" not in {d["name"] for d in (await _recv_until(ws, "devices"))["devices"]}
+    for w in (ws, wg):
+        await w.close()

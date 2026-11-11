@@ -276,12 +276,41 @@ class MobileServer:
             if self._active[conn]:
                 await self.handlers.on_presence(device, device.chat_id)
             return
+        if kind in ("invite", "devices", "revoke"):
+            return await self._on_admin(conn, device, kind, msg)
         if kind == "push_token":
             token = msg.get("token")
             if token is None or (isinstance(token, str) and len(token) < 300):
                 self.registry.update(device.id, push_token=token or None)
             return
         await self._reply_error(conn, "unknown_type", msg.get("ref"))
+
+    async def _on_admin(self, conn: ServerConnection, device: Device, kind: str, msg: dict[str, Any]) -> None:
+        """Owner-only device management from the phone: invite a guest, list devices, revoke one."""
+        ref = msg.get("ref")
+        if not device.is_owner:
+            return await self._reply_error(conn, "forbidden", ref)
+        if kind == "invite":
+            role = "owner" if msg.get("role") == "owner" else "guest"
+            new_dev, token = self.registry.pair(str(msg.get("name") or ""), role=role)
+            payload = {"type": "invite", "ref": ref, "token": token, "role": role, "device": new_dev.public(),
+                       "profile": self.handlers.profile_info()}
+            return await self._safe_send(conn, json.dumps(payload, ensure_ascii=False))
+        if kind == "revoke":
+            target = str(msg.get("device_id") or "")
+            if target == device.id:
+                return await self._reply_error(conn, "cannot_revoke_self", ref)
+            ok = self.registry.revoke(target)
+            for c, d in list(self._conn_device.items()):
+                if d.id == target:
+                    with contextlib.suppress(Exception):
+                        await c.close(4003, "revoked")
+            if not ok:
+                return await self._reply_error(conn, "not_found", ref)
+        devices = [{**d.public(), "created_at": d.created_at, "last_seen": d.last_seen,
+                    "online": any(x.id == d.id for x in self._conn_device.values()), "me": d.id == device.id}
+                   for d in self.registry.list()]
+        await self._safe_send(conn, json.dumps({"type": "devices", "ref": ref, "devices": devices}, ensure_ascii=False))
 
     async def _on_send(self, conn: ServerConnection, device: Device, msg: dict[str, Any]) -> None:
         text = msg.get("text") if isinstance(msg.get("text"), str) else ""
