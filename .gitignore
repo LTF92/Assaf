@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.expo/
+dist/
+*.log
+.DS_Store

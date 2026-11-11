@@ -1,0 +1,35 @@
+name: hermes-mobile
+label: Hermes Mobile
+kind: platform
+version: 0.1.0
+description: >
+  Private channel for the Hermes Mobile phone app (iOS + Android). One chat per profile,
+  tappable approval / question cards, collapsible tool output, push notifications, and
+  per-profile guest access. No third-party messaging service involved.
+author: LTF92
+requires_env:
+  - name: HERMES_MOBILE_ENABLED
+    description: "Turn the Hermes Mobile channel on for this profile (true/false)"
+    prompt: "Enable Hermes Mobile? (true/false)"
+    password: false
+optional_env:
+  - name: HERMES_MOBILE_PORT
+    description: "Port this profile listens on (default 8765; use a different port per profile)"
+    prompt: "Port"
+    password: false
+  - name: HERMES_MOBILE_HOST
+    description: "Interface to bind (default 0.0.0.0; use your Tailscale IP to listen only there)"
+    prompt: "Bind address"
+    password: false
+  - name: HERMES_MOBILE_LABEL
+    description: "Name the app shows for this profile"
+    prompt: "Display name"
+    password: false
+  - name: HERMES_MOBILE_PUBLIC_HOST
+    description: "Address phones should dial (used by the pairing QR code)"
+    prompt: "Public host"
+    password: false
+  - name: HERMES_MOBILE_PUSH
+    description: "Send push notifications through Expo when the app is closed (default true)"
+    prompt: "Push notifications? (true/false)"
+    password: false
