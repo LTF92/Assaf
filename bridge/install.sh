@@ -11,7 +11,6 @@ PROFILE="${1:-default}"
 PORT="${2:-8765}"
 HERMES_ROOT="${HERMES_ROOT:-$HOME/.hermes}"
 SRC="$(cd "$(dirname "$0")" && pwd)/hermes_mobile"
-DEST="$HERMES_ROOT/plugins/hermes_mobile"
 
 if ! command -v hermes >/dev/null 2>&1; then
   echo "The 'hermes' command was not found. Install Hermes Agent first." >&2
@@ -24,6 +23,8 @@ else
   HOME_DIR="$HERMES_ROOT/profiles/$PROFILE"; H=(hermes -p "$PROFILE")
 fi
 [ -d "$HOME_DIR" ] || { echo "Profile '$PROFILE' not found at $HOME_DIR" >&2; exit 1; }
+# Each profile discovers user plugins in its own HERMES_HOME, so install per profile.
+DEST="$HOME_DIR/plugins/hermes_mobile"
 
 echo "→ Copying plugin to $DEST"
 mkdir -p "$DEST"
