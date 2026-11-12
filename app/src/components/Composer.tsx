@@ -4,7 +4,8 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { t } from '../lib/i18n';
+import { detectDirection } from '../lib/direction';
+import { isRTL, t } from '../lib/i18n';
 import { colors, radius } from '../lib/theme';
 import type { Attachment } from '../lib/types';
 
@@ -27,6 +28,8 @@ const COMMANDS = [
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ disabled, onSend }, ref) {
   const [text, setText] = useState('');
+  // follow the language being typed; empty input follows the app language
+  const inputDir = detectDirection(text) ?? (isRTL ? 'rtl' : 'ltr');
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [menu, setMenu] = useState<'none' | 'attach' | 'commands'>('none');
   const input = useRef<React.ComponentRef<typeof TextInput>>(null);
@@ -100,7 +103,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
         </Pressable>
         <TextInput
           ref={input}
-          style={s.input}
+          style={[s.input, { textAlign: inputDir === 'rtl' ? 'right' : 'left', writingDirection: inputDir }]}
           value={text}
           onChangeText={setText}
           placeholder={t.messagePlaceholder}
