@@ -48,8 +48,9 @@ set_env HERMES_MOBILE_PORT "$PORT"
 # Paired-device tokens are the access control for this channel (see README).
 set_env HERMES_MOBILE_ALLOW_ALL_USERS true
 
-# Live streaming of answers, and structured tool cards instead of emoji progress bubbles.
-"${H[@]}" config set gateway.streaming.enabled true >/dev/null || true
+# Live streaming of answers (this channel only), and structured tool cards instead of emoji progress bubbles.
+# Per-platform switch so other channels (WhatsApp, Telegram...) keep their current behaviour.
+"${H[@]}" config set display.platforms.hermes_mobile.streaming true >/dev/null || true
 "${H[@]}" config set display.platforms.hermes_mobile.tool_progress off >/dev/null || true
 
 echo "→ Restarting the gateway"
