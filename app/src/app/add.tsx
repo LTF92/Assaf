@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 
 import { t } from '../lib/i18n';
 import { parsePairingLink } from '../lib/pairing';
@@ -15,7 +15,7 @@ export default function AddConnection() {
   const [link, setLink] = useState('');
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
 
   const pair = async (raw: string) => {
     if (busy.current) return;
