@@ -7,10 +7,11 @@ import type { DeviceInfo } from '../../lib/client';
 import { t } from '../../lib/i18n';
 import { buildPairingLink } from '../../lib/pairing';
 import { useChat, useConnections } from '../../lib/store';
-import { colors, radius } from '../../lib/theme';
+import { colors, radius, makeStyles } from '../../lib/theme';
 
 /** Owner-only: give someone access to THIS profile (guest QR), and see / revoke paired devices. */
 export default function ShareProfile() {
+  const s = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { connections } = useConnections();
   const conn = connections.find((c) => c.id === id);
@@ -93,10 +94,10 @@ export default function ShareProfile() {
   );
 }
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
-  hint: { color: colors.textDim, fontSize: 14, lineHeight: 20, padding: 4 },
-  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16 },
+  hint: { color: colors.textDim, fontSize: fs(14), lineHeight: fs(20), padding: 4 },
+  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: fs(16) },
   btn: { backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 14, justifyContent: 'center' },
   btnText: { color: colors.accentText, fontWeight: '800' },
   btnOutline: { borderWidth: 1, borderColor: colors.accent, borderRadius: radius.pill, paddingVertical: 10, paddingHorizontal: 22 },
@@ -104,10 +105,10 @@ const s = StyleSheet.create({
   error: { color: colors.danger },
   qrBox: { alignItems: 'center', gap: 14, paddingVertical: 8 },
   qrBg: { padding: 14, backgroundColor: '#FFFFFF', borderRadius: radius.md },
-  section: { color: colors.textFaint, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 },
+  section: { color: colors.textFaint, fontSize: fs(12), textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 },
   device: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  devName: { color: colors.text, fontSize: 16 },
-  devMeta: { color: colors.textFaint, fontSize: 12 },
+  devName: { color: colors.text, fontSize: fs(16) },
+  devMeta: { color: colors.textFaint, fontSize: fs(12) },
   revoke: { color: colors.danger, fontWeight: '600' },
-});
+}));

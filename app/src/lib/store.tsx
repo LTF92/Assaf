@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import { HermesClient, type ClientSnapshot } from './client';
 import { colorFor, type PairingPayload } from './pairing';
 import { registerForPush } from './push';
+import { useSettings } from './settings';
 import {
   deleteConnectionData, loadCache, loadConnections, loadToken, saveCache, saveConnections, saveToken,
 } from './storage';
@@ -52,13 +53,27 @@ export function ConnectionsProvider({ children }: { children: React.ReactNode })
         setConnections(list);
         setReady(true);
       }
-      pushToken.current = await registerForPush();
-      if (pushToken.current) clients.current.forEach((c) => c.setPushToken(pushToken.current));
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Push notifications follow the setting: on registers this phone with every bridge, off unregisters it.
+  const { settings, ready: settingsReady } = useSettings();
+  useEffect(() => {
+    if (!settingsReady || !ready) return;
+    let cancelled = false;
+    (async () => {
+      const token = settings.notifications ? await registerForPush() : null;
+      if (cancelled) return;
+      pushToken.current = token;
+      clients.current.forEach((c) => c.setPushToken(token));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.notifications, settingsReady, ready]);
 
   // foreground/background: reconnect quickly and tell bridges whether to send push notifications
   useEffect(() => {

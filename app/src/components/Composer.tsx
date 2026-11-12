@@ -4,9 +4,9 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Animated, Image, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { detectDirection } from '../lib/direction';
-import { isRTL, t } from '../lib/i18n';
-import { colors, radius } from '../lib/theme';
+import { current, textDir } from '../lib/settings';
+import { t } from '../lib/i18n';
+import { colors, radius, makeStyles } from '../lib/theme';
 import type { Attachment } from '../lib/types';
 import { Appear, Gradient, PressScale } from './motion';
 
@@ -28,9 +28,10 @@ const COMMANDS = [
 ];
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ disabled, onSend }, ref) {
+  const s = useStyles();
   const [text, setText] = useState('');
   // follow the language being typed; empty input follows the app language
-  const inputDir = detectDirection(text) ?? (isRTL ? 'rtl' : 'ltr');
+  const inputDir = textDir(text);
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [menu, setMenu] = useState<'none' | 'attach' | 'commands'>('none');
   const input = useRef<React.ComponentRef<typeof TextInput>>(null);
@@ -42,7 +43,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
     Animated.spring(ready, { toValue: canSend ? 1 : 0, damping: 14, stiffness: 260, useNativeDriver: true }).start();
   }, [canSend, ready]);
   const toggleMenu = (which: 'attach' | 'commands') => {
-    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
+    if (current.animations) LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
     setMenu((m) => (m === which ? 'none' : which));
   };
 
@@ -131,6 +132,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
           placeholder={t.messagePlaceholder}
           placeholderTextColor={colors.textFaint}
           multiline
+          submitBehavior={current.sendOnEnter ? 'submit' : 'newline'}
+          returnKeyType={current.sendOnEnter ? 'send' : 'default'}
+          onSubmitEditing={() => current.sendOnEnter && send()}
           textAlignVertical="center"
         />
         <Pressable onPress={() => send()} disabled={!canSend} hitSlop={6}>
@@ -145,7 +149,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
               },
             ]}
           >
-            <Gradient colors={['#F7C766', '#E9873B']} radius={20} />
+            <Gradient colors={[colors.accent, colors.accent2]} radius={20} />
             <Text style={s.sendIcon}>↑</Text>
           </Animated.View>
         </Pressable>
@@ -154,15 +158,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
   );
 });
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   wrap: { backgroundColor: colors.bg, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: 5 },
   iconBtn: { width: 38, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   iconBtnOn: { backgroundColor: colors.accentSoft },
-  icon: { color: colors.textDim, fontSize: 22 },
-  input: { flex: 1, minHeight: 40, maxHeight: 140, color: colors.text, fontSize: 16, paddingHorizontal: 8, paddingVertical: 9, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object,
+  icon: { color: colors.textDim, fontSize: fs(22) },
+  input: { flex: 1, minHeight: 40, maxHeight: 140, color: colors.text, fontSize: fs(16), paddingHorizontal: 8, paddingVertical: 9, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object,
   send: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  sendIcon: { color: colors.accentText, fontSize: 20, fontWeight: '800' },
+  sendIcon: { color: colors.accentText, fontSize: fs(20), fontWeight: '800' },
   menu: { marginBottom: 8 },
   menuInner: { flexDirection: 'row', gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', gap: 6, alignItems: 'center' },
@@ -171,7 +175,7 @@ const s = StyleSheet.create({
   atts: { gap: 8, paddingBottom: 8 },
   att: { width: 64, height: 64, borderRadius: radius.sm, backgroundColor: colors.surface2, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   attImg: { width: 64, height: 64 },
-  attName: { color: colors.textDim, fontSize: 10, padding: 4 },
+  attName: { color: colors.textDim, fontSize: fs(10), padding: 4 },
   attXWrap: { position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-  attX: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 16 },
-});
+  attX: { color: '#fff', fontSize: fs(14), fontWeight: '700', lineHeight: fs(16) },
+}));

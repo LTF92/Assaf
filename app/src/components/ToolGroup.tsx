@@ -3,11 +3,12 @@ import React, { memo, useState } from 'react';
 import { ActivityIndicator, Animated, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { t } from '../lib/i18n';
-import { colors, mono, radius } from '../lib/theme';
+import { colors, mono, radius, makeStyles } from '../lib/theme';
+import { current } from '../lib/settings';
 import type { Message } from '../lib/types';
 import { Appear, useToggle } from './motion';
 
-const smooth = () => LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+const smooth = () => current.animations && LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
 
 const ICONS: Record<string, string> = {
   terminal: '⌨︎', execute_code: '⌨︎', web_search: '⌕', web_extract: '⌕', browser: '◍',
@@ -18,10 +19,11 @@ const ICONS: Record<string, string> = {
 function statusDot(status?: string) {
   if (status === 'running') return <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.7 }] }} />;
   const color = status === 'error' ? colors.danger : status === 'ok' ? colors.ok : colors.textFaint;
-  return <View style={[s.dot, { backgroundColor: color }]} />;
+  return <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />;
 }
 
 function ToolRow({ m }: { m: Message }) {
+  const s = useStyles();
   const [open, setOpen] = useState(false);
   const tool = m.tool;
   const name = tool?.name === 'progress' ? '' : tool?.name ?? '';
@@ -47,6 +49,7 @@ function ToolRow({ m }: { m: Message }) {
 }
 
 function Block({ title, body, error }: { title: string; body: string; error?: boolean }) {
+  const s = useStyles();
   return (
     <View style={s.block}>
       <Pressable onLongPress={() => Clipboard.setStringAsync(body)}>
@@ -61,7 +64,8 @@ function Block({ title, body, error }: { title: string; body: string; error?: bo
 
 /** Consecutive tool calls collapsed into one line ("3 steps"); tap to see each command and its output. */
 function ToolGroupImpl({ items }: { items: Message[] }) {
-  const [open, setOpen] = useState(false);
+  const s = useStyles();
+  const [open, setOpen] = useState(current.toolSteps === 'expanded');
   const turn = useToggle(open);
   const running = items.some((m) => m.tool?.status === 'running');
   const failed = items.some((m) => m.tool?.status === 'error');
@@ -82,22 +86,22 @@ function ToolGroupImpl({ items }: { items: Message[] }) {
 
 export const ToolGroup = memo(ToolGroupImpl);
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   wrap: { marginVertical: 4, marginHorizontal: 14, alignSelf: 'stretch', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9 },
-  headerText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
-  headerLast: { color: colors.textFaint, fontSize: 12, flex: 1, fontFamily: mono },
-  chev: { color: colors.textFaint, marginLeft: 'auto', fontSize: 13 },
+  headerText: { color: colors.textDim, fontSize: fs(13), fontWeight: '600' },
+  headerLast: { color: colors.textFaint, fontSize: fs(12), flex: 1, fontFamily: mono },
+  chev: { color: colors.textFaint, marginLeft: 'auto', fontSize: fs(13) },
   dot: { width: 8, height: 8, borderRadius: 4 },
   row: { borderTopWidth: 1, borderTopColor: colors.border },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  icon: { color: colors.textDim, fontSize: 13, width: 14, textAlign: 'center' },
-  toolName: { color: colors.accent, fontSize: 12, fontFamily: mono },
-  summary: { color: colors.textDim, fontSize: 12, fontFamily: mono, flex: 1 },
-  duration: { color: colors.textFaint, fontSize: 11 },
+  icon: { color: colors.textDim, fontSize: fs(13), width: 14, textAlign: 'center' },
+  toolName: { color: colors.accent, fontSize: fs(12), fontFamily: mono },
+  summary: { color: colors.textDim, fontSize: fs(12), fontFamily: mono, flex: 1 },
+  duration: { color: colors.textFaint, fontSize: fs(11) },
   detail: { paddingHorizontal: 12, paddingBottom: 10, gap: 8 },
   block: { gap: 4 },
-  blockTitle: { color: colors.textFaint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 },
+  blockTitle: { color: colors.textFaint, fontSize: fs(11), textTransform: 'uppercase', letterSpacing: 0.5 },
   code: { backgroundColor: colors.code, borderRadius: radius.sm, maxHeight: 260 },
-  codeText: { color: '#D7DCE8', fontFamily: mono, fontSize: 12, lineHeight: 17 },
-});
+  codeText: { color: colors.codeText, fontFamily: mono, fontSize: fs(12), lineHeight: fs(17) },
+}));

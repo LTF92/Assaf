@@ -6,9 +6,10 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { StatusDot } from '../../components/StatusDot';
 import { t } from '../../lib/i18n';
 import { useChat, useConnections } from '../../lib/store';
-import { colors, mono, radius } from '../../lib/theme';
+import { colors, mono, radius, makeStyles } from '../../lib/theme';
 
 export default function ConnectionSettings() {
+  const s = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { connections, remove, rename } = useConnections();
   const conn = connections.find((c) => c.id === id);
@@ -54,6 +55,7 @@ export default function ConnectionSettings() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const s = useStyles();
   return (
     <View style={{ gap: 6 }}>
       <Text style={s.label}>{label}</Text>
@@ -62,16 +64,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   screen: { flex: 1, backgroundColor: colors.bg, padding: 20, gap: 20 },
-  label: { color: colors.textFaint, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  value: { color: colors.text, fontSize: 16 },
-  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16 },
+  label: { color: colors.textFaint, fontSize: fs(12), textTransform: 'uppercase', letterSpacing: 0.5 },
+  value: { color: colors.text, fontSize: fs(16) },
+  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: fs(16) },
   save: { backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 16, justifyContent: 'center' },
   saveText: { color: colors.accentText, fontWeight: '800' },
-  err: { color: colors.danger, fontSize: 13 },
+  err: { color: colors.danger, fontSize: fs(13) },
   share: { backgroundColor: colors.accent, borderRadius: radius.pill, paddingVertical: 13, alignItems: 'center' },
-  shareText: { color: colors.accentText, fontWeight: '800', fontSize: 16 },
+  shareText: { color: colors.accentText, fontWeight: '800', fontSize: fs(16) },
   remove: { marginTop: 'auto', borderWidth: 1, borderColor: colors.danger, borderRadius: radius.pill, paddingVertical: 13, alignItems: 'center' },
-  removeText: { color: colors.danger, fontWeight: '700', fontSize: 16 },
-});
+  removeText: { color: colors.danger, fontWeight: '700', fontSize: fs(16) },
+}));

@@ -13,14 +13,16 @@ import { ToolGroup } from '../../components/ToolGroup';
 import { t } from '../../lib/i18n';
 import { httpBase } from '../../lib/pairing';
 import { buildRows, type Row } from '../../lib/rows';
+import { useSettings } from '../../lib/settings';
 import { useChat, useConnections } from '../../lib/store';
-import { colors, radius } from '../../lib/theme';
+import { colors, radius, makeStyles } from '../../lib/theme';
 
 function statusLabel(status: string) {
   return status === 'online' ? t.online : status === 'connecting' ? t.connecting : status === 'unauthorized' ? t.unauthorized : t.offline;
 }
 
 export default function ChatScreen() {
+  const s = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { connections } = useConnections();
   const conn = connections.find((c) => c.id === id);
@@ -28,7 +30,12 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const composer = useRef<ComposerHandle>(null);
 
-  const rows = useMemo(() => buildRows(snap.messages).reverse(), [snap.messages]);
+  const { settings } = useSettings();
+  const hideTools = settings.toolSteps === 'hidden';
+  const rows = useMemo(
+    () => buildRows(snap.messages).filter((r) => !(hideTools && r.type === 'tools')).reverse(),
+    [snap.messages, hideTools],
+  );
   const baseUrl = conn ? httpBase(conn) : '';
   const headers = useMemo(() => client?.mediaHeaders() ?? {}, [client]);
 
@@ -114,15 +121,15 @@ export default function ChatScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   titleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, maxWidth: 260 },
-  title: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  title: { color: colors.text, fontSize: fs(16), fontWeight: '700' },
   statusLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
-  status: { color: colors.textDim, fontSize: 12 },
+  status: { color: colors.textDim, fontSize: fs(12) },
   typingRow: { paddingHorizontal: 16, paddingVertical: 6, alignItems: 'flex-start' },
   typingBubble: { backgroundColor: colors.surface, borderRadius: radius.lg, borderBottomLeftRadius: 6, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: colors.border },
   empty: { padding: 40, paddingTop: 80, alignItems: 'center', transform: [{ scaleY: -1 }] },
-  emptyName: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  emptyName: { color: colors.text, fontSize: fs(18), fontWeight: '700' },
   emptyText: { color: colors.textFaint },
-});
+}));

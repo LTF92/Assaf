@@ -7,9 +7,10 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { t } from '../lib/i18n';
 import { parsePairingLink } from '../lib/pairing';
 import { useConnections } from '../lib/store';
-import { colors, radius } from '../lib/theme';
+import { colors, radius, makeStyles } from '../lib/theme';
 
 export default function AddConnection() {
+  const s = useStyles();
   const { add } = useConnections();
   const [permission, requestPermission] = useCameraPermissions();
   const [link, setLink] = useState('');
@@ -103,18 +104,18 @@ export default function AddConnection() {
   );
 }
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, gap: 14, paddingBottom: 40 },
-  title: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  title: { color: colors.text, fontSize: fs(18), fontWeight: '700' },
   cameraBox: { aspectRatio: 1, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   permission: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 20 },
   permText: { color: colors.textDim, textAlign: 'center' },
   or: { color: colors.textDim, marginTop: 6 },
-  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
+  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 12, fontSize: fs(14) },
   error: { color: colors.danger },
   btn: { backgroundColor: colors.accent, paddingVertical: 13, paddingHorizontal: 22, borderRadius: radius.pill, alignItems: 'center' },
-  btnText: { color: colors.accentText, fontWeight: '800', fontSize: 16 },
+  btnText: { color: colors.accentText, fontWeight: '800', fontSize: fs(16) },
   btnOutline: { borderWidth: 1, borderColor: colors.accent, paddingVertical: 12, paddingHorizontal: 22, borderRadius: radius.pill, alignItems: 'center' },
-  btnOutlineText: { color: colors.accent, fontWeight: '700', fontSize: 15 },
-});
+  btnOutlineText: { color: colors.accent, fontWeight: '700', fontSize: fs(15) },
+}));

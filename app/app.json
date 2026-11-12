@@ -12,7 +12,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ltf92.hermesmobile",
       "infoPlist": {
-        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true, "NSAllowsLocalNetworking": true },
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
         "NSLocalNetworkUsageDescription": "Connect to your Hermes agent on your network."
       }
     },
@@ -27,15 +30,43 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": { "favicon": "./assets/favicon.png" },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
     "plugins": [
       "expo-router",
       "expo-secure-store",
       "expo-localization",
-      ["expo-camera", { "cameraPermission": "Scan the pairing QR code of your Hermes agent.", "recordAudioAndroid": false, "barcodeScannerEnabled": true }],
-      ["expo-image-picker", { "photosPermission": "Send photos to your agent.", "cameraPermission": "Take photos to send to your agent." }],
-      ["expo-notifications", { "color": "#F5B544" }]
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan the pairing QR code of your Hermes agent.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Send photos to your agent.",
+          "cameraPermission": "Take photos to send to your agent."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F5B544"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Hermes uses Face ID to lock your chats."
+        }
+      ]
     ],
-    "experiments": { "typedRoutes": false }
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

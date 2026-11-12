@@ -3,13 +3,15 @@ import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AppLock } from '../components/AppLock';
 import { t } from '../lib/i18n';
 import { parsePairingLink } from '../lib/pairing';
+import { SettingsProvider, useSettings } from '../lib/settings';
 import { ConnectionsProvider, useConnections } from '../lib/store';
-import { colors } from '../lib/theme';
+import { useTheme } from '../lib/theme';
 
 /** hermesmobile://pair?d=… opened from the camera app or a shared link pairs immediately. */
 function DeepLinks() {
@@ -38,27 +40,42 @@ function NotificationOpener() {
   return null;
 }
 
+function Shell() {
+  // Re-renders the navigator when the theme or language changes.
+  const { colors: c } = useTheme();
+  const { ready } = useSettings();
+  if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+  return (
+    <ConnectionsProvider>
+      <StatusBar style={c.statusBar} />
+      <DeepLinks />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: c.bg },
+          headerTintColor: c.text,
+          headerTitleStyle: { color: c.text },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: c.bg },
+        }}
+      >
+        <Stack.Screen name="index" options={{ title: t.appName }} />
+        <Stack.Screen name="add" options={{ title: t.addConnection, presentation: 'modal' }} />
+        <Stack.Screen name="chat/[id]" options={{ title: '' }} />
+        <Stack.Screen name="connection/[id]" options={{ title: t.settings }} />
+        <Stack.Screen name="share/[id]" options={{ title: t.share }} />
+        <Stack.Screen name="settings" options={{ title: t.appSettings }} />
+      </Stack>
+      <AppLock />
+    </ConnectionsProvider>
+  );
+}
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <ConnectionsProvider>
-        <StatusBar style="light" />
-        <DeepLinks />
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: colors.bg },
-            headerTintColor: colors.text,
-            headerShadowVisible: false,
-            contentStyle: { backgroundColor: colors.bg },
-          }}
-        >
-          <Stack.Screen name="index" options={{ title: t.appName }} />
-          <Stack.Screen name="add" options={{ title: t.addConnection, presentation: 'modal' }} />
-          <Stack.Screen name="chat/[id]" options={{ title: '' }} />
-          <Stack.Screen name="connection/[id]" options={{ title: t.settings }} />
-          <Stack.Screen name="share/[id]" options={{ title: t.share }} />
-        </Stack>
-      </ConnectionsProvider>
+      <SettingsProvider>
+        <Shell />
+      </SettingsProvider>
     </SafeAreaProvider>
   );
 }

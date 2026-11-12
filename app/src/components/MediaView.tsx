@@ -4,7 +4,7 @@ import React, { memo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { t } from '../lib/i18n';
-import { colors, radius } from '../lib/theme';
+import { colors, radius, makeStyles } from '../lib/theme';
 import type { Media } from '../lib/types';
 
 interface Props {
@@ -21,6 +21,7 @@ function fmtSize(n?: number) {
 }
 
 function MediaViewImpl({ media, baseUrl, headers }: Props) {
+  const s = useStyles();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const url = media.url || `${baseUrl}/media/${media.id}`;
@@ -68,11 +69,11 @@ function MediaViewImpl({ media, baseUrl, headers }: Props) {
 
 export const MediaView = memo(MediaViewImpl);
 
-const s = StyleSheet.create({
+const useStyles = makeStyles((colors, fs) => ({
   image: { width: 240, height: 240, borderRadius: radius.md, backgroundColor: colors.surface2, marginVertical: 4 },
   file: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginVertical: 4, maxWidth: 320 },
-  fileIcon: { color: colors.accent, fontSize: 22 },
-  fileName: { color: colors.text, fontSize: 15 },
-  fileMeta: { color: colors.textFaint, fontSize: 12 },
+  fileIcon: { color: colors.accent, fontSize: fs(22) },
+  fileName: { color: colors.text, fontSize: fs(15) },
+  fileMeta: { color: colors.textFaint, fontSize: fs(12) },
   open: { color: colors.accent, fontWeight: '600' },
-});
+}));

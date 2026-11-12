@@ -2,7 +2,8 @@
  * Small animation building blocks on React Native's built-in Animated API
  * (no extra native modules, so it runs in Expo Go as is).
  */
-import * as Haptics from 'expo-haptics';
+import { haptic as hapticFx } from '../lib/haptics';
+import { current } from '../lib/settings';
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -27,11 +28,12 @@ export function Appear({
   scale?: boolean;
   enabled?: boolean;
 }) {
-  const v = useRef(new Animated.Value(enabled ? 0 : 1)).current;
+  const on = enabled && current.animations;
+  const v = useRef(new Animated.Value(on ? 0 : 1)).current;
   useEffect(() => {
-    if (!enabled) return;
+    if (!on) return;
     Animated.spring(v, { toValue: 1, delay, damping: 18, stiffness: 180, mass: 0.9, useNativeDriver: native }).start();
-  }, [enabled, delay, v]);
+  }, [on, delay, v]);
   const offset = v.interpolate({ inputRange: [0, 1], outputRange: [from, 0] });
   const transform: any[] = [axis === 'y' ? { translateY: offset } : { translateX: offset }];
   if (scale) transform.push({ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) });
@@ -48,14 +50,14 @@ export function PressScale({
   ...rest
 }: PressableProps & { style?: StyleProp<ViewStyle>; to?: number; haptic?: boolean; children: React.ReactNode }) {
   const v = useRef(new Animated.Value(1)).current;
-  const go = (toValue: number) => Animated.spring(v, { toValue, damping: 15, stiffness: 320, useNativeDriver: native }).start();
+  const go = (toValue: number) => current.animations && Animated.spring(v, { toValue, damping: 15, stiffness: 320, useNativeDriver: native }).start();
   return (
     <Pressable
       {...rest}
       onPressIn={(e) => { go(to); rest.onPressIn?.(e); }}
       onPressOut={(e) => { go(1); rest.onPressOut?.(e); }}
       onPress={(e) => {
-        if (haptic) void Haptics.selectionAsync();
+        if (haptic) hapticFx.tap();
         onPress?.(e);
       }}
     >
@@ -65,8 +67,9 @@ export function PressScale({
 }
 
 /** Looping 0 → 1 → 0 value, for pulses and glows. */
-export function useLoop(duration = 1400, active = true) {
+export function useLoop(duration = 1400, wanted = true) {
   const v = useRef(new Animated.Value(0)).current;
+  const active = wanted && current.animations;
   useEffect(() => {
     if (!active) {
       v.stopAnimation();
@@ -89,6 +92,7 @@ export function useLoop(duration = 1400, active = true) {
 export function TypingDots({ color, size = 7 }: { color: string; size?: number }) {
   const dots = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current];
   useEffect(() => {
+    if (!current.animations) return;
     const anims = dots.map((d, i) =>
       Animated.loop(
         Animated.sequence([
@@ -126,6 +130,7 @@ export function TypingDots({ color, size = 7 }: { color: string; size?: number }
 export function useToggle(open: boolean) {
   const v = useRef(new Animated.Value(open ? 1 : 0)).current;
   useEffect(() => {
+    if (!current.animations) return v.setValue(open ? 1 : 0);
     Animated.spring(v, { toValue: open ? 1 : 0, damping: 16, stiffness: 220, useNativeDriver: native }).start();
   }, [open, v]);
   return v;
