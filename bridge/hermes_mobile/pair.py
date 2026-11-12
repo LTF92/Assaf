@@ -81,15 +81,24 @@ def pairing_link(url: str, token: str, profile: str, label: str, role: str) -> s
 
 
 def print_qr(text: str) -> None:
+    """Draw the QR in the terminal: Python `qrcode` if installed, else the `qrencode` CLI."""
     try:
         import qrcode  # type: ignore
     except ImportError:
-        print("(Install the 'qrcode' package to see a QR code here: pip install qrcode)\n")
+        qrcode = None
+    if qrcode is not None:
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(text)
+        qr.make(fit=True)
+        qr.print_ascii(invert=True)
         return
-    qr = qrcode.QRCode(border=1)
-    qr.add_data(text)
-    qr.make(fit=True)
-    qr.print_ascii(invert=True)
+    import shutil
+    if shutil.which("qrencode"):
+        # the secret goes through stdin, never the process list
+        res = subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "1"], input=text.encode(), check=False)
+        if res.returncode == 0:
+            return
+    print("(No QR tool found. Install one to see a QR code here: brew install qrencode)\n")
 
 
 def cmd_pair(args, home: Path, profile: str) -> int:
