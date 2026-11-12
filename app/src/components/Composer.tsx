@@ -1,13 +1,14 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Animated, Image, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { detectDirection } from '../lib/direction';
 import { isRTL, t } from '../lib/i18n';
 import { colors, radius } from '../lib/theme';
 import type { Attachment } from '../lib/types';
+import { Appear, Gradient, PressScale } from './motion';
 
 export interface ComposerHandle {
   focus: () => void;
@@ -36,6 +37,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }));
 
   const canSend = !disabled && (text.trim().length > 0 || atts.length > 0);
+  const ready = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(ready, { toValue: canSend ? 1 : 0, damping: 14, stiffness: 260, useNativeDriver: true }).start();
+  }, [canSend, ready]);
+  const toggleMenu = (which: 'attach' | 'commands') => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
+    setMenu((m) => (m === which ? 'none' : which));
+  };
 
   const send = (value = text) => {
     if (disabled || (!value.trim() && atts.length === 0)) return;
@@ -68,39 +77,52 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
   return (
     <View style={s.wrap}>
       {menu === 'commands' && (
-        <ScrollView horizontal style={s.menu} contentContainerStyle={s.menuInner} keyboardShouldPersistTaps="handled">
-          {COMMANDS.map((c) => (
-            <Pressable key={c.cmd} style={s.chip} onPress={() => send(c.cmd)}>
-              <Text style={s.chipCmd}>{c.cmd}</Text>
-              <Text style={s.chipLabel}>{c.label()}</Text>
-            </Pressable>
+        <ScrollView horizontal style={s.menu} contentContainerStyle={s.menuInner} keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false}>
+          {COMMANDS.map((c, i) => (
+            <Appear key={c.cmd} delay={i * 40} from={10}>
+              <PressScale style={s.chip} haptic onPress={() => send(c.cmd)}>
+                <Text style={s.chipCmd}>{c.cmd}</Text>
+                <Text style={s.chipLabel}>{c.label()}</Text>
+              </PressScale>
+            </Appear>
           ))}
         </ScrollView>
       )}
       {menu === 'attach' && (
         <View style={[s.menu, s.menuInner]}>
-          <Pressable style={s.chip} onPress={() => pickImage(false)}><Text style={s.chipLabel}>{t.photo}</Text></Pressable>
-          <Pressable style={s.chip} onPress={() => pickImage(true)}><Text style={s.chipLabel}>{t.camera}</Text></Pressable>
-          <Pressable style={s.chip} onPress={pickFile}><Text style={s.chipLabel}>{t.file}</Text></Pressable>
+          {[
+            { label: t.photo, icon: '🖼', go: () => pickImage(false) },
+            { label: t.camera, icon: '📷', go: () => pickImage(true) },
+            { label: t.file, icon: '📄', go: pickFile },
+          ].map((o, i) => (
+            <Appear key={o.label} delay={i * 40} from={10}>
+              <PressScale style={s.chip} haptic onPress={o.go}>
+                <Text>{o.icon}</Text>
+                <Text style={s.chipLabel}>{o.label}</Text>
+              </PressScale>
+            </Appear>
+          ))}
         </View>
       )}
       {atts.length > 0 && (
         <ScrollView horizontal contentContainerStyle={s.atts}>
           {atts.map((a, i) => (
-            <Pressable key={i} onPress={() => setAtts((p) => p.filter((_, j) => j !== i))} style={s.att}>
-              {a.uri ? <Image source={{ uri: a.uri }} style={s.attImg} /> : <Text style={s.attName} numberOfLines={2}>{a.name}</Text>}
-              <Text style={s.attX}>×</Text>
-            </Pressable>
+            <Appear key={i} scale from={6}>
+              <Pressable onPress={() => setAtts((p) => p.filter((_, j) => j !== i))} style={s.att}>
+                {a.uri ? <Image source={{ uri: a.uri }} style={s.attImg} /> : <Text style={s.attName} numberOfLines={2}>{a.name}</Text>}
+                <View style={s.attXWrap}><Text style={s.attX}>×</Text></View>
+              </Pressable>
+            </Appear>
           ))}
         </ScrollView>
       )}
       <View style={s.row}>
-        <Pressable style={s.iconBtn} onPress={() => setMenu((m) => (m === 'attach' ? 'none' : 'attach'))} hitSlop={8}>
-          <Text style={s.icon}>＋</Text>
-        </Pressable>
-        <Pressable style={s.iconBtn} onPress={() => setMenu((m) => (m === 'commands' ? 'none' : 'commands'))} hitSlop={8}>
-          <Text style={[s.icon, { fontSize: 18 }]}>/</Text>
-        </Pressable>
+        <PressScale style={[s.iconBtn, menu === 'attach' && s.iconBtnOn]} to={0.88} onPress={() => toggleMenu('attach')} hitSlop={8}>
+          <Text style={[s.icon, menu === 'attach' && { color: colors.accent, transform: [{ rotate: '45deg' }] }]}>＋</Text>
+        </PressScale>
+        <PressScale style={[s.iconBtn, menu === 'commands' && s.iconBtnOn]} to={0.88} onPress={() => toggleMenu('commands')} hitSlop={8}>
+          <Text style={[s.icon, { fontSize: 18 }, menu === 'commands' && { color: colors.accent }]}>/</Text>
+        </PressScale>
         <TextInput
           ref={input}
           style={[s.input, { textAlign: inputDir === 'rtl' ? 'right' : 'left', writingDirection: inputDir }]}
@@ -111,8 +133,21 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
           multiline
           textAlignVertical="center"
         />
-        <Pressable style={[s.send, !canSend && { opacity: 0.35 }]} onPress={() => send()} disabled={!canSend}>
-          <Text style={s.sendIcon}>↑</Text>
+        <Pressable onPress={() => send()} disabled={!canSend} hitSlop={6}>
+          <Animated.View
+            style={[
+              s.send,
+              {
+                opacity: ready.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+                transform: [
+                  { scale: ready.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) },
+                ],
+              },
+            ]}
+          >
+            <Gradient colors={['#F7C766', '#E9873B']} radius={20} />
+            <Text style={s.sendIcon}>↑</Text>
+          </Animated.View>
         </Pressable>
       </View>
     </View>
@@ -120,12 +155,13 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
 });
 
 const s = StyleSheet.create({
-  wrap: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
-  iconBtn: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
+  wrap: { backgroundColor: colors.bg, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8 },
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: 5 },
+  iconBtn: { width: 38, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  iconBtnOn: { backgroundColor: colors.accentSoft },
   icon: { color: colors.textDim, fontSize: 22 },
-  input: { flex: 1, minHeight: 40, maxHeight: 140, color: colors.text, fontSize: 16, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
-  send: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  input: { flex: 1, minHeight: 40, maxHeight: 140, color: colors.text, fontSize: 16, paddingHorizontal: 8, paddingVertical: 9, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : null) } as object,
+  send: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   sendIcon: { color: colors.accentText, fontSize: 20, fontWeight: '800' },
   menu: { marginBottom: 8 },
   menuInner: { flexDirection: 'row', gap: 8 },
@@ -136,5 +172,6 @@ const s = StyleSheet.create({
   att: { width: 64, height: 64, borderRadius: radius.sm, backgroundColor: colors.surface2, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   attImg: { width: 64, height: 64 },
   attName: { color: colors.textDim, fontSize: 10, padding: 4 },
-  attX: { position: 'absolute', top: 0, right: 4, color: colors.text, fontSize: 16, fontWeight: '700' },
+  attXWrap: { position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  attX: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 16 },
 });

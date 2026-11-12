@@ -1,12 +1,16 @@
-import { Link, router, Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import React from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Avatar } from '../components/Avatar';
+import { Appear, Gradient, PressScale, TypingDots, useLoop } from '../components/motion';
 import { StatusDot } from '../components/StatusDot';
-import { t } from '../lib/i18n';
+import { detectDirection } from '../lib/direction';
+import { isRTL, t } from '../lib/i18n';
 import { preview } from '../lib/rows';
 import { useChat, useConnections } from '../lib/store';
-import { colors, mono, radius } from '../lib/theme';
+import { colors, mono, radius, shadow } from '../lib/theme';
 import type { Connection } from '../lib/types';
 
 function timeLabel(ts?: number) {
@@ -18,7 +22,7 @@ function timeLabel(ts?: number) {
     : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-function ConnectionRow({ conn }: { conn: Connection }) {
+function ConnectionRow({ conn, index }: { conn: Connection; index: number }) {
   const { snap } = useChat(conn.id);
   const last = preview(snap.messages);
   const pendingCards = snap.messages.filter((m) => m.card?.state === 'pending').length;
@@ -26,82 +30,131 @@ function ConnectionRow({ conn }: { conn: Connection }) {
   const lastText = last
     ? last.kind === 'card' ? `⚠︎ ${t.approvalNeeded}` : last.kind === 'media' ? `📎 ${last.media?.name ?? ''}` : last.text
     : '';
+  const previewText = lastText.replace(/[*_`#>|]/g, '').replace(/\s+/g, ' ').trim();
+  const dir = detectDirection(previewText) ?? (isRTL ? 'rtl' : 'ltr');
   return (
-    <Pressable style={({ pressed }) => [s.row, pressed && { backgroundColor: colors.surface }]} onPress={() => router.push(`/chat/${conn.id}`)}>
-      <View style={[s.avatar, { backgroundColor: conn.color || colors.accent }]}>
-        <Text style={s.avatarText}>{label.slice(0, 1).toUpperCase()}</Text>
-        <View style={s.dotWrap}><StatusDot status={snap.status} size={10} /></View>
-      </View>
-      <View style={{ flex: 1, gap: 3 }}>
-        <View style={s.line}>
-          <Text style={s.name} numberOfLines={1}>{label}</Text>
-          <Text style={s.time}>{timeLabel(last?.ts)}</Text>
+    <Appear delay={index * 60} from={18}>
+      <PressScale style={s.row} to={0.98} onPress={() => router.push(`/chat/${conn.id}`)}>
+        <View>
+          <Avatar label={label} seed={conn.profile + conn.url} />
+          <View style={s.dotWrap}><StatusDot status={snap.status} size={11} /></View>
         </View>
-        <View style={s.line}>
-          <Text style={s.preview} numberOfLines={1}>
-            {snap.typing ? t.typing : lastText.replace(/[*_`#>|]/g, '').replace(/\s+/g, ' ')}
-          </Text>
-          {pendingCards > 0 && <View style={s.badge}><Text style={s.badgeText}>{pendingCards}</Text></View>}
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={s.line}>
+            <Text style={s.name} numberOfLines={1}>{label}</Text>
+            <Text style={[s.time, pendingCards > 0 && { color: colors.accent }]}>{timeLabel(last?.ts)}</Text>
+          </View>
+          <View style={s.line}>
+            {snap.typing ? (
+              <View style={{ flex: 1 }}><TypingDots color={colors.accent} size={6} /></View>
+            ) : (
+              <Text style={[s.preview, { writingDirection: dir, textAlign: dir === 'rtl' ? 'right' : 'left' }]} numberOfLines={1}>
+                {previewText || t.emptyChat}
+              </Text>
+            )}
+            {pendingCards > 0 && (
+              <Appear scale from={0}>
+                <View style={s.badge}><Text style={s.badgeText}>{pendingCards}</Text></View>
+              </Appear>
+            )}
+          </View>
+          <View style={s.tags}>
+            {conn.role === 'guest' && <Text style={s.tag}>{t.guest}</Text>}
+            <Text style={s.sub} numberOfLines={1}>{conn.profile}</Text>
+          </View>
         </View>
-        <Text style={s.sub} numberOfLines={1}>{conn.role === 'guest' ? `${t.guest} · ` : ''}{conn.profile}</Text>
+      </PressScale>
+    </Appear>
+  );
+}
+
+/** A slowly breathing gold mark for the empty state. */
+function Mark() {
+  const glow = useLoop(2600);
+  return (
+    <View style={s.markWrap}>
+      <Animated.View
+        style={[
+          s.markGlow,
+          {
+            opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] }),
+            transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.12] }) }],
+          },
+        ]}
+      />
+      <View style={s.mark}>
+        <Gradient colors={['#F7C766', '#E9873B']} radius={36} />
+        <Text style={s.markText}>H</Text>
       </View>
-    </Pressable>
+    </View>
+  );
+}
+
+function AddButton({ bottom }: { bottom: number }) {
+  return (
+    <Appear delay={200} from={30} scale style={[s.fabWrap, shadow, { bottom: bottom + 18 }]}>
+      <PressScale haptic style={s.fab} to={0.92} onPress={() => router.push('/add')}>
+        <Gradient colors={['#F7C766', '#E9873B']} radius={radius.pill} />
+        <Text style={s.fabPlus}>＋</Text>
+        <Text style={s.fabText}>{t.addConnection}</Text>
+      </PressScale>
+    </Appear>
   );
 }
 
 export default function Home() {
   const { connections, ready } = useConnections();
+  const insets = useSafeAreaInsets();
   return (
     <View style={s.screen}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Link href="/add" asChild>
-              <Pressable hitSlop={10}><Text style={s.plus}>＋</Text></Pressable>
-            </Link>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerLargeTitle: true, headerTransparent: false }} />
       {ready && connections.length === 0 ? (
         <View style={s.empty}>
-          <Text style={s.emptyTitle}>{t.noConnections}</Text>
-          <Text style={s.emptyHint}>{t.noConnectionsHint}</Text>
-          <Text style={s.cmd}>hermes mobile pair</Text>
-          <Pressable style={s.cta} onPress={() => router.push('/add')}>
-            <Text style={s.ctaText}>{t.addConnection}</Text>
-          </Pressable>
+          <Appear scale from={24}><Mark /></Appear>
+          <Appear delay={120}><Text style={s.emptyTitle}>{t.noConnections}</Text></Appear>
+          <Appear delay={200}><Text style={s.emptyHint}>{t.noConnectionsHint}</Text></Appear>
+          <Appear delay={280}><Text style={s.cmd}>hermes mobile pair</Text></Appear>
         </View>
       ) : (
         <FlatList
           data={connections}
           keyExtractor={(c) => c.id}
-          renderItem={({ item }) => <ConnectionRow conn={item} />}
-          ItemSeparatorComponent={() => <View style={s.sep} />}
+          renderItem={({ item, index }) => <ConnectionRow conn={item} index={index} />}
+          contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: insets.bottom + 100 }}
+          contentInsetAdjustmentBehavior="automatic"
         />
       )}
+      {ready && <AddButton bottom={insets.bottom} />}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  plus: { color: colors.accent, fontSize: 26, paddingHorizontal: 6 },
-  row: { flexDirection: 'row', gap: 14, paddingHorizontal: 16, paddingVertical: 14, alignItems: 'center' },
-  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#141414', fontSize: 22, fontWeight: '800' },
-  dotWrap: { position: 'absolute', right: 0, bottom: 0, padding: 2, borderRadius: 10, backgroundColor: colors.bg },
+  row: {
+    flexDirection: 'row', gap: 14, paddingHorizontal: 14, paddingVertical: 14, alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+  },
+  dotWrap: { position: 'absolute', right: -1, bottom: -1, padding: 3, borderRadius: 12, backgroundColor: colors.surface },
   line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { color: colors.text, fontSize: 17, fontWeight: '700', flex: 1 },
-  time: { color: colors.textFaint, fontSize: 12 },
+  name: { color: colors.text, fontSize: 17, fontWeight: '700', flex: 1, letterSpacing: 0.1 },
+  time: { color: colors.textFaint, fontSize: 12, fontVariant: ['tabular-nums'] },
   preview: { color: colors.textDim, fontSize: 14, flex: 1 },
-  sub: { color: colors.textFaint, fontSize: 12 },
-  badge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  tags: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tag: { color: colors.accent, backgroundColor: colors.accentSoft, fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill, overflow: 'hidden' },
+  sub: { color: colors.textFaint, fontSize: 12, fontFamily: mono },
+  badge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   badgeText: { color: colors.accentText, fontSize: 12, fontWeight: '800' },
-  sep: { height: 1, backgroundColor: colors.border, marginLeft: 82 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
-  emptyTitle: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  emptyHint: { color: colors.textDim, fontSize: 15, textAlign: 'center' },
-  cmd: { color: '#FFD58A', fontFamily: mono, backgroundColor: colors.code, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.sm, overflow: 'hidden' },
-  cta: { marginTop: 10, backgroundColor: colors.accent, paddingHorizontal: 22, paddingVertical: 13, borderRadius: radius.pill },
-  ctaText: { color: colors.accentText, fontWeight: '800', fontSize: 16 },
+  markWrap: { width: 120, height: 120, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  markGlow: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: colors.accentGlow },
+  mark: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  markText: { color: '#1A1305', fontSize: 34, fontWeight: '900' },
+  emptyTitle: { color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  emptyHint: { color: colors.textDim, fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  cmd: { color: '#FFD58A', fontFamily: mono, backgroundColor: colors.code, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.sm, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  fabWrap: { position: 'absolute', alignSelf: 'center', borderRadius: radius.pill },
+  fab: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, height: 54, borderRadius: radius.pill, overflow: 'hidden' },
+  fabPlus: { color: colors.accentText, fontSize: 22, fontWeight: '800' },
+  fabText: { color: colors.accentText, fontSize: 16, fontWeight: '800' },
 });

@@ -70,10 +70,10 @@ export const MessageItem = memo(MessageItemImpl, (a, b) => a.m === b.m && a.base
 
 const s = StyleSheet.create({
   userRow: { alignItems: 'flex-end', paddingHorizontal: 14, marginVertical: 6 },
-  userBubble: { maxWidth: '85%', backgroundColor: colors.userBubble, borderRadius: radius.lg, borderBottomRightRadius: 6, paddingHorizontal: 14, paddingVertical: 10 },
-  userText: { color: colors.text, fontSize: 16, lineHeight: 22 },
-  attLine: { color: colors.textDim, fontSize: 13, marginBottom: 4 },
+  userBubble: { maxWidth: '85%', backgroundColor: colors.userBubble, borderRadius: radius.xl, borderBottomRightRadius: 8, paddingHorizontal: 15, paddingVertical: 10 },
+  userText: { color: colors.userText, fontSize: 16, lineHeight: 22, fontWeight: '500' },
+  attLine: { color: colors.userText, opacity: 0.7, fontSize: 13, marginBottom: 4 },
   meta: { color: colors.textFaint, fontSize: 11, marginTop: 3 },
-  assistant: { paddingHorizontal: 16, marginVertical: 6 },
+  assistant: { paddingHorizontal: 18, marginVertical: 6 },
   interim: { color: colors.textDim, fontSize: 14, fontStyle: 'italic' },
 });

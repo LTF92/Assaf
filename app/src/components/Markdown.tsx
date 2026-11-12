@@ -17,7 +17,6 @@ const base: MarkedStyles = {
   code: { backgroundColor: colors.code, borderRadius: 10, padding: 12, marginVertical: 6, borderWidth: 1, borderColor: colors.border, direction: 'ltr' },
   // code is always read left-to-right, whatever the surrounding language
   codeText: { fontFamily: mono, fontSize: 13, color: '#D7DCE8', lineHeight: 19, writingDirection: 'ltr', textAlign: 'left' },
-  blockquote: { borderStartColor: colors.accent, borderStartWidth: 3, paddingStart: 10, backgroundColor: 'transparent' },
   h1: { color: colors.text, fontSize: 22, fontWeight: '700', marginVertical: 6 },
   h2: { color: colors.text, fontSize: 19, fontWeight: '700', marginVertical: 6 },
   h3: { color: colors.text, fontSize: 17, fontWeight: '700', marginVertical: 4 },
@@ -32,6 +31,11 @@ const TEXT_KEYS = ['text', 'strong', 'em', 'link', 'h1', 'h2', 'h3', 'h4', 'h5',
 function stylesFor(dir: Dir): MarkedStyles {
   const out: MarkedStyles = { ...base };
   for (const k of TEXT_KEYS) out[k] = { ...(base[k] as object), writingDirection: dir };
+  // The library's default quote bar is a physical left border; put the gold bar on the reading side instead.
+  out.blockquote =
+    dir === 'rtl'
+      ? { backgroundColor: 'transparent', borderLeftWidth: 0, paddingLeft: 0, borderRightWidth: 3, borderRightColor: colors.accent, paddingRight: 10 }
+      : { backgroundColor: 'transparent', borderRightWidth: 0, paddingRight: 0, borderLeftWidth: 3, borderLeftColor: colors.accent, paddingLeft: 10 };
   return out;
 }
 

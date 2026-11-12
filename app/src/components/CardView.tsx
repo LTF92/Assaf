@@ -1,11 +1,12 @@
 import * as Haptics from 'expo-haptics';
 import React, { memo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { t } from '../lib/i18n';
 import { colors, mono, radius } from '../lib/theme';
 import type { CardAction, Message } from '../lib/types';
 import { Markdown } from './Markdown';
+import { Appear, useLoop } from './motion';
 
 interface Props {
   m: Message;
@@ -19,6 +20,7 @@ function CardViewImpl({ m, onAction, onOther }: Props) {
   const [tapped, setTapped] = useState<string | null>(null);
   const pending = card.state === 'pending';
   const tone = card.type === 'approval' ? colors.warn : card.type === 'confirm' ? colors.warn : colors.accent;
+  const glow = useLoop(1800, pending);
   const title = card.type === 'approval' ? (pending ? t.approvalNeeded : t.approval) : card.type === 'clarify' ? t.question : card.title || t.confirm;
 
   const press = (a: CardAction) => {
@@ -32,8 +34,20 @@ function CardViewImpl({ m, onAction, onOther }: Props) {
 
   return (
     <View style={[s.card, { borderColor: pending ? tone : colors.border }]}>
+      {pending && (
+        <Animated.View
+          pointerEvents="none"
+          style={[s.glow, { borderColor: tone, opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] }) }]}
+        />
+      )}
       <View style={s.head}>
-        <View style={[s.badge, { backgroundColor: pending ? tone : colors.surface2 }]} />
+        <Animated.View
+          style={[
+            s.badge,
+            { backgroundColor: pending ? tone : colors.surface2 },
+            pending && { transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] }) }] },
+          ]}
+        />
         <Text style={[s.title, { color: pending ? tone : colors.textDim }]}>{title}</Text>
       </View>
 
@@ -63,7 +77,8 @@ function CardViewImpl({ m, onAction, onOther }: Props) {
                   card.type !== 'clarify' && { flexGrow: 1 },
                   primary && s.btnPrimary,
                   danger && s.btnDanger,
-                  (pressed || tapped === a.value) && { opacity: 0.6 },
+                  pressed && { transform: [{ scale: 0.97 }] },
+                  tapped === a.value && { opacity: 0.6 },
                 ]}
               >
                 <Text style={[s.btnText, primary && { color: colors.accentText }, danger && { color: colors.danger }]}>
@@ -75,9 +90,11 @@ function CardViewImpl({ m, onAction, onOther }: Props) {
           {card.awaiting_text ? <Text style={s.hint}>{t.typeAnswer}</Text> : null}
         </View>
       ) : (
-        <Text style={[s.resolution, card.state === 'expired' && { color: colors.textFaint }]}>
-          {card.state === 'expired' ? t.expired : `✓ ${card.resolution?.label ?? ''}${card.resolution?.by ? ` · ${card.resolution.by}` : ''}`}
-        </Text>
+        <Appear scale from={4}>
+          <Text style={[s.resolution, card.state === 'expired' && { color: colors.textFaint }]}>
+            {card.state === 'expired' ? t.expired : `✓ ${card.resolution?.label ?? ''}${card.resolution?.by ? ` · ${card.resolution.by}` : ''}`}
+          </Text>
+        </Appear>
       )}
     </View>
   );
@@ -86,7 +103,8 @@ function CardViewImpl({ m, onAction, onOther }: Props) {
 export const CardView = memo(CardViewImpl);
 
 const s = StyleSheet.create({
-  card: { marginHorizontal: 14, marginVertical: 6, padding: 14, borderRadius: radius.lg, borderWidth: 1.5, backgroundColor: colors.surface, gap: 10 },
+  card: { marginHorizontal: 14, marginVertical: 6, padding: 15, borderRadius: radius.lg, borderWidth: 1.5, backgroundColor: colors.surface, gap: 11 },
+  glow: { position: 'absolute', left: -5, top: -5, right: -5, bottom: -5, borderRadius: radius.lg + 5, borderWidth: 3 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: { width: 8, height: 8, borderRadius: 4 },
   title: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
@@ -95,7 +113,7 @@ const s = StyleSheet.create({
   cmdText: { color: '#FFD58A', fontFamily: mono, fontSize: 13, lineHeight: 19 },
   actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionsCol: { gap: 8 },
-  btn: { paddingVertical: 11, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  btn: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.surface2, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   btnPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
   btnDanger: { borderColor: colors.danger, backgroundColor: 'transparent' },
   btnText: { color: colors.text, fontSize: 15, fontWeight: '600' },

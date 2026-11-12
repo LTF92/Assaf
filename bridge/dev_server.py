@@ -9,6 +9,7 @@ It prints a pairing QR/link. In the app, try:
   * "approve"        → an approval card (dangerous command)
   * "ask"            → a multiple-choice question card
   * "file"           → a file attachment
+  * Arabic text      → a mixed Arabic/English answer (to check text direction)
 """
 
 from __future__ import annotations
@@ -39,6 +40,28 @@ systemctl status hermes-gateway
 ```
 
 Want me to clean the cache too?"""
+
+ANSWER_AR = """**تم.** هذي النتيجة:
+
+| العنصر | الحالة |
+|---|---|
+| القرص | مستخدم 42% |
+| الخدمات | كلها شغالة |
+
+الأوامر اللي شغلتها:
+
+```bash
+systemctl status hermes-gateway
+```
+
+> ملاحظة: الكاش حجمه كبير شوي.
+
+Steps to clean it:
+
+1. Stop the gateway
+2. Run `hermes cache clear`
+
+تبيني أنظف الكاش؟"""
 
 
 class FakeHermes:
@@ -96,8 +119,9 @@ class FakeHermes:
             await self._say(chat_id, text=f"Got {len(attachments)} attachment(s): "
                                           + ", ".join(a['name'] for a in attachments))
         msg = await self._say(chat_id, text="")
-        for i in range(0, len(ANSWER), 24):  # stream like the real gateway (send + edits)
-            msg = s.store.upsert(chat_id, msg["id"], text=ANSWER[: i + 24])
+        answer = ANSWER_AR if any("\u0600" <= ch <= "\u06ff" for ch in text) else ANSWER
+        for i in range(0, len(answer), 24):  # stream like the real gateway (send + edits)
+            msg = s.store.upsert(chat_id, msg["id"], text=answer[: i + 24])
             await s.publish_message(msg)
             await asyncio.sleep(0.05)
         await s.publish_typing(chat_id, False)
