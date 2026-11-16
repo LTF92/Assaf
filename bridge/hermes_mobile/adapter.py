@@ -623,9 +623,14 @@ def register(ctx) -> None:
         emoji="📱",
         pii_safe=True,
         platform_hint=(
-            "You are chatting through the Hermes Mobile phone app. Markdown, fenced code blocks and tables "
-            "render well. Tool calls are shown to the user automatically as collapsible cards, so you do "
-            "not need to echo commands or their raw output; give a clear, well-structured answer instead."),
+            "You are chatting through the Hermes Mobile phone app (Hamza). Markdown, tables (they scroll "
+            "sideways, so wide tables are fine) and fenced code blocks render well. Tool calls are shown to the "
+            "user automatically as collapsible cards, so you do not need to echo commands or their raw output; "
+            "give a clear, well-structured answer instead. For rich cards (progress, stats, bar/line/pie charts, "
+            "link previews, maps, files, images, audio, video, quick-reply buttons, short forms, checklists) put "
+            "JSON in a ```hamza fenced block; the hamza-blocks skill lists every type and field. Example: "
+            '```hamza\n{"type": "choices", "question": "Deploy where?", "options": ["staging", "production"]}\n``` '
+            "The user's pick comes back to you as a normal message."),
     )
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
     ctx.register_hook("post_tool_call", _on_post_tool_call)

@@ -76,6 +76,14 @@ Every create or edit bumps the chat's `rev`, so a reconnecting phone sends `sinc
 and receives exactly the messages that were created **or changed** while it was away (streamed
 answers are edits of one message).
 
+### Rich blocks inside `text`
+
+Assistant markdown can carry cards in a fenced block whose language is `hamza`, holding JSON
+(one object or an array). Types: `progress`, `stats`, `chart` (bar/line/pie), `link`, `location`,
+`images`, `file`, `audio`, `video`, `choices`, `form`, `checklist`. The full field list is in
+`bridge/hermes_mobile/skills/hamza-blocks/SKILL.md` (installed into each profile as a Hermes
+skill). Interactive blocks answer by sending a normal user message. Invalid JSON is shown as code.
+
 ## Scheduled jobs, notifications and guests (owner tools)
 
 All requests carry a `ref`; the reply echoes it.

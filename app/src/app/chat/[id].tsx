@@ -11,6 +11,7 @@ import { MessageItem } from '../../components/MessageItem';
 import { Appear, TypingDots } from '../../components/motion';
 import { StatusDot } from '../../components/StatusDot';
 import { ToolGroup } from '../../components/ToolGroup';
+import { BlockActionsProvider } from '../../lib/blockActions';
 import { isRTL, t } from '../../lib/i18n';
 import { markRead, splitTitle } from '../../lib/inbox';
 import { httpBase } from '../../lib/pairing';
@@ -76,6 +77,10 @@ export default function ChatScreen() {
 
   const busy = snap.typing || snap.messages.some((m) => m.kind === 'tool' && m.tool?.status === 'running');
 
+  const blockActions = useMemo(
+    () => ({ reply: (text: string) => client?.send(text, []), enabled: snap.status === 'online' }),
+    [client, snap.status],
+  );
   const onAction = useCallback((messageId: string, value: string) => client?.act(messageId, value), [client]);
   const onRetry = useCallback((clientId: string) => client?.retrySend(clientId), [client]);
 
@@ -132,6 +137,7 @@ export default function ChatScreen() {
         </Pressable>
       </View>
       {conn.role === 'guest' && <GuestStrip conn={conn} snap={snap} />}
+      <BlockActionsProvider value={blockActions}>
       <FlatList
         inverted
         data={rows}
@@ -158,6 +164,7 @@ export default function ChatScreen() {
           </View>
         }
       />
+      </BlockActionsProvider>
       <View style={{ paddingBottom: insets.bottom }}>
         <Composer
           ref={composer}

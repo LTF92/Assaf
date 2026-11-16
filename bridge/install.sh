@@ -30,6 +30,11 @@ echo "→ Copying plugin to $DEST"
 mkdir -p "$DEST"
 cp "$SRC"/*.py "$SRC"/plugin.yaml "$DEST"/
 
+# The skill that teaches the agent the app's rich cards (```hamza blocks).
+echo "→ Installing the hamza-blocks skill"
+mkdir -p "$HOME_DIR/skills/mobile/hamza-blocks"
+cp "$SRC/skills/hamza-blocks/SKILL.md" "$HOME_DIR/skills/mobile/hamza-blocks/SKILL.md"
+
 echo "→ Enabling plugin"
 "${H[@]}" plugins enable hermes-mobile >/dev/null 2>&1 || "${H[@]}" plugins enable hermes_mobile || true
 

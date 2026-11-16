@@ -2,10 +2,14 @@ import React, { Fragment, memo, useMemo } from 'react';
 import { View } from 'react-native';
 import { MarkedLexer, useMarkdown, type MarkedStyles } from 'react-native-marked';
 
+import { isHamzaLang, parseBlocks, type HamzaBlock } from '../lib/blocks';
 import { detectDirection, groupByDirection, type Dir } from '../lib/direction';
 import { isRTL } from '../lib/i18n';
 import { current as settingsNow } from '../lib/settings';
 import { colors, mono, useTheme, type Colors } from '../lib/theme';
+import { CodeBlock } from './blocks/Code';
+import { HamzaList } from './blocks/Hamza';
+import { Table, type TableData } from './blocks/Table';
 
 // Text alignment is left to `auto`: it follows `writingDirection` (iOS) and the container's
 // `direction` (Android), so the same styles right-align Arabic and left-align English.
@@ -35,11 +39,11 @@ function stylesFor(dir: Dir, colors: Colors, fs: (n: number) => number): MarkedS
   const base = baseStyles(colors, fs);
   const out: MarkedStyles = { ...base };
   for (const k of TEXT_KEYS) out[k] = { ...(base[k] as object), writingDirection: dir };
-  // The library's default quote bar is a physical left border; put the gold bar on the reading side instead.
-  out.blockquote =
-    dir === 'rtl'
-      ? { backgroundColor: 'transparent', borderLeftWidth: 0, paddingLeft: 0, borderRightWidth: 3, borderRightColor: colors.accent, paddingRight: 10 }
-      : { backgroundColor: 'transparent', borderRightWidth: 0, paddingRight: 0, borderLeftWidth: 3, borderLeftColor: colors.accent, paddingLeft: 10 };
+  // Quotes as in the design: a soft surface card, dimmer text, no side bar.
+  out.blockquote = {
+    backgroundColor: colors.surface2, borderLeftWidth: 0, borderRightWidth: 0, borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 14, marginVertical: 6,
+  };
   return out;
 }
 
@@ -70,26 +74,83 @@ function Block({ text, dir, themeKey, fs }: { text: string; dir: Dir; themeKey: 
   );
 }
 
+type Segment =
+  | { kind: 'md'; dir: Dir; raw: string }
+  | { kind: 'table'; data: TableData }
+  | { kind: 'code'; code: string; lang?: string }
+  | { kind: 'hamza'; blocks: HamzaBlock[] }
+  | { kind: 'pending' };
+
+interface Tok {
+  type: string;
+  raw: string;
+  text?: string;
+  lang?: string;
+  header?: { text: string }[];
+  rows?: { text: string }[][];
+  align?: (string | null)[];
+}
+
+/** Tables, code and hamza blocks become native components; everything else stays markdown. */
+function segment(src: string, fallback: Dir, forced: Dir | null): Segment[] {
+  const toks = MarkedLexer(src) as unknown as Tok[];
+  const out: Segment[] = [];
+  let buf: Tok[] = [];
+  const flush = () => {
+    if (!buf.length) return;
+    if (buf.every((b) => b.type === 'space')) { buf = []; return; }
+    if (forced) out.push({ kind: 'md', dir: forced, raw: buf.map((b) => b.raw).join('') });
+    else for (const g of groupByDirection(buf, fallback)) out.push({ kind: 'md', ...g });
+    buf = [];
+  };
+  for (const tok of toks) {
+    if (tok.type === 'table' && tok.header && tok.rows) {
+      flush();
+      out.push({ kind: 'table', data: { header: tok.header.map((h) => h.text), rows: tok.rows.map((r) => r.map((c) => c.text)), align: tok.align } });
+    } else if (tok.type === 'code') {
+      flush();
+      if (isHamzaLang(tok.lang)) {
+        const blocks = parseBlocks(tok.text || '');
+        if (blocks) out.push({ kind: 'hamza', blocks });
+        else if (/```\s*$/.test(tok.raw)) out.push({ kind: 'code', code: tok.text || '', lang: 'json' });
+        else out.push({ kind: 'pending' }); // still streaming in
+      } else out.push({ kind: 'code', code: tok.text || '', lang: tok.lang });
+    } else buf.push(tok);
+  }
+  flush();
+  return out;
+}
+
 function MarkdownImpl({ text }: { text: string }) {
   const { key, fs } = useTheme();
-  const blocks = useMemo(() => {
+  const segs = useMemo<Segment[]>(() => {
     const src = text || '';
     // A fixed direction from the settings applies to the whole answer; "auto" goes paragraph by paragraph.
     const forced = settingsNow.textDirection !== 'auto' ? settingsNow.textDirection : null;
     const fallback = forced ?? detectDirection(src) ?? (isRTL ? 'rtl' : 'ltr');
-    if (forced) return [{ dir: forced, raw: src }];
     try {
-      return groupByDirection(MarkedLexer(src), fallback);
+      return segment(src, fallback, forced);
     } catch {
-      return [{ dir: fallback, raw: src }];
+      return [{ kind: 'md', dir: fallback, raw: src }];
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, key]);
   return (
     <View>
-      {blocks.map((b, i) => (
-        <Block key={`${i}-${b.dir}`} text={b.raw} dir={b.dir} themeKey={key} fs={fs} />
-      ))}
+      {segs.map((g, i) => {
+        switch (g.kind) {
+          case 'md':
+            return <Block key={`${i}-md-${g.dir}`} text={g.raw} dir={g.dir} themeKey={key} fs={fs} />;
+          case 'table':
+            return <Table key={`${i}-t`} data={g.data} />;
+          case 'code':
+            return <CodeBlock key={`${i}-c`} code={g.code} lang={g.lang} />;
+          case 'hamza':
+            return <HamzaList key={`${i}-h`} blocks={g.blocks} />;
+          default:
+            return <View key={`${i}-p`} style={{ height: 64, borderRadius: 14, backgroundColor: colors.surface2, marginVertical: 6, opacity: 0.6 }} />;
+        }
+      })}
     </View>
   );
 }

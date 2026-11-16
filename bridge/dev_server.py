@@ -81,6 +81,58 @@ APPROVAL = {"type": "approval", "state": "pending", "command": "rm -rf ./build &
                         {"label": "Deny", "value": "deny", "style": "danger"}]}
 
 
+BLOCKS_1 = """هذا ملخص أداء الخوادم لهذا الأسبوع:
+
+| الخادم | المعالج | الذاكرة | القرص | الحالة | آخر تحديث |
+|---|---|---|---|---|---|
+| web-01 | 42% | 3.1 GB | 58% | **يعمل** | قبل دقيقتين |
+| web-02 | 77% | 5.8 GB | 81% | تحذير | قبل 5 دقائق |
+| db-main | 31% | 12.4 GB | 64% | يعمل | قبل دقيقة |
+
+> ملاحظة: الخادم web-02 يحتاج تنظيف ملفات السجلات قريبًا.
+
+```python
+def disk_usage(path="/"):
+    # يرجّع نسبة الاستخدام
+    total, used, free = shutil.disk_usage(path)
+    return round(used / total * 100, 1)
+```
+
+```hamza
+[
+  {"type": "progress", "title": "نشر الإصدار 2.4", "percent": 60,
+   "steps": [{"label": "بناء الحزمة", "status": "done"}, {"label": "الاختبارات", "status": "done"},
+             {"label": "رفع للخادم", "status": "running"}, {"label": "التحقق", "status": "waiting"}]},
+  {"type": "stats", "items": [{"label": "الطلبات", "value": "12.4K", "note": "+8%", "tone": "good"},
+                               {"label": "الأخطاء", "value": "37", "note": "+3", "tone": "bad"},
+                               {"label": "زمن الاستجابة", "value": "182ms", "note": "ثابت"}]},
+  {"type": "chart", "kind": "bar", "title": "الطلبات اليومية", "subtitle": "آخر 7 أيام", "unit": "K",
+   "labels": ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"], "values": [8, 11, 9, 14, 12, 7, 5]},
+  {"type": "chart", "kind": "line", "title": "استخدام المعالج", "labels": ["00", "04", "08", "12", "16", "20"], "values": [22, 18, 45, 71, 64, 38], "unit": "%"},
+  {"type": "chart", "kind": "pie", "title": "توزيع الزيارات", "labels": ["جوال", "سطح المكتب", "تابلت"], "values": [62, 30, 8], "unit": "%"}
+]
+```
+"""
+
+BLOCKS_2 = """جهزت لك المطلوب:
+
+```hamza
+[
+  {"type": "link", "url": "https://github.com/ltf92/assaf", "title": "ltf92/assaf", "description": "تطبيق همزة لوكلاء Hermes", "site": "github.com"},
+  {"type": "location", "title": "مكتب الرياض", "address": "طريق الملك فهد، العليا، الرياض", "lat": 24.7136, "lng": 46.6753},
+  {"type": "images", "images": ["https://picsum.photos/id/1018/600/400", "https://picsum.photos/id/1015/600/400", "https://picsum.photos/id/1039/600/400", "https://picsum.photos/id/1043/600/400", "https://picsum.photos/id/1050/600/400"], "caption": "صور الموقع"},
+  {"type": "file", "name": "report-q3.pdf", "size": "2.4 MB", "meta": "PDF · 12 صفحة"},
+  {"type": "audio", "url": "https://example.com/note.m4a", "duration": "0:42"},
+  {"type": "choices", "question": "وش تبي أسوي بعدها؟", "options": [{"label": "أعد التشغيل", "primary": true}, "اعرض السجلات", "تجاهل"]},
+  {"type": "form", "title": "حجز موعد صيانة", "fields": [{"name": "date", "label": "التاريخ", "type": "date", "value": "2026-11-20"},
+     {"name": "window", "label": "الفترة", "type": "choice", "options": ["صباحًا", "مساءً"], "value": "صباحًا"},
+     {"name": "note", "label": "ملاحظة", "type": "text"}], "submit": "تأكيد الحجز"},
+  {"type": "checklist", "title": "قائمة ما قبل النشر", "items": [{"label": "تحديث الإصدار", "done": true}, {"label": "مراجعة السجل", "done": true}, {"label": "نسخة احتياطية"}, {"label": "إشعار الفريق"}]}
+]
+```
+"""
+
+
 class FakeCron:
     """In-memory stand-in for Hermes' ``cron.jobs`` (same function names and job shape)."""
 
@@ -168,6 +220,10 @@ class FakeHermes:
         if text == "approve":
             await self._say(chat_id, kind="card", text="Run a dangerous command?", _private={"kind": "approval"},
                             card=APPROVAL)
+            return await s.publish_typing(chat_id, False)
+        if text == "blocks":
+            await self._say(chat_id, text=BLOCKS_1)
+            await self._say(chat_id, text=BLOCKS_2)
             return await s.publish_typing(chat_id, False)
         if text == "cron":
             await self._say(chat_id, text=REPORT, origin="scheduled")
