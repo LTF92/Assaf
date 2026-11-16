@@ -20,6 +20,8 @@ export interface Settings {
   appLock: boolean;
   lockAfterMin: number;
   notifications: boolean;
+  /** Which pushes to get (sent to every bridge); per-agent mutes live on the connection. */
+  notify: { approval: boolean; scheduled: boolean; errors: boolean; replies: boolean; quiet: { on: boolean; start: number; end: number } };
 }
 
 export const DEFAULTS: Settings = {
@@ -36,6 +38,7 @@ export const DEFAULTS: Settings = {
   appLock: false,
   lockAfterMin: 0,
   notifications: true,
+  notify: { approval: true, scheduled: true, errors: true, replies: true, quiet: { on: false, start: 23, end: 7 } },
 };
 
 const KEY = 'hm.settings.v1';
@@ -71,7 +74,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(KEY)
-      .then((raw) => raw && setSettings({ ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }))
+      .then((raw) => raw && setSettings(() => {
+        const saved = JSON.parse(raw) as Partial<Settings>;
+        return { ...DEFAULTS, ...saved, notify: { ...DEFAULTS.notify, ...saved.notify, quiet: { ...DEFAULTS.notify.quiet, ...saved.notify?.quiet } } };
+      }))
       .catch(() => {})
       .finally(() => setReady(true));
   }, []);

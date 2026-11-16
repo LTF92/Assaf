@@ -7,6 +7,7 @@ import { Alert, Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppLock } from '../components/AppLock';
+import { InAppBanner } from '../components/Banner';
 import { t } from '../lib/i18n';
 import { parsePairingLink } from '../lib/pairing';
 import { SettingsProvider, useSettings } from '../lib/settings';
@@ -22,6 +23,8 @@ function DeepLinks() {
     if (!url || !url.includes('pair')) return;
     const payload = parsePairingLink(url);
     if (!payload) return void Alert.alert(t.invalidLink);
+    // A guest invite shows who shared what before joining.
+    if (payload.role === 'guest') return void router.push({ pathname: '/join', params: { link: url } });
     void add(payload).then((conn) => router.replace(`/chat/${conn.id}`));
   }, [url, add]);
 
@@ -63,9 +66,15 @@ function Shell() {
         <Stack.Screen name="add" options={{ title: t.pairTitle, presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="chat/[id]" options={{ title: '', headerShown: false }} />
         <Stack.Screen name="connection/[id]" options={{ title: t.customize, presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="share/[id]" options={{ title: t.shareAgent }} />
+        <Stack.Screen name="share/[id]" options={{ title: t.shareAgent, headerShown: false }} />
+        <Stack.Screen name="share/invite" options={{ title: t.invitePerson, headerShown: false }} />
+        <Stack.Screen name="jobs" options={{ title: t.jobsTitle, headerShown: false }} />
+        <Stack.Screen name="job" options={{ title: t.editJob, presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ title: t.notifications, headerShown: false }} />
+        <Stack.Screen name="join" options={{ title: t.acceptInvite, presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: t.appSettings, headerShown: false }} />
       </Stack>
+      <InAppBanner />
       <AppLock />
     </ConnectionsProvider>
   );

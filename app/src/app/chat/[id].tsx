@@ -17,7 +17,10 @@ import { httpBase } from '../../lib/pairing';
 import { buildRows, type Row } from '../../lib/rows';
 import { useSettings } from '../../lib/settings';
 import { agentName, portOf, useChat, useConnections } from '../../lib/store';
+import { guestLimits, scopeLabel, secondsLeft, spanText } from '../../lib/share';
 import { colors, makeStyles, mono } from '../../lib/theme';
+import type { ClientSnapshot } from '../../lib/client';
+import type { Connection } from '../../lib/types';
 
 function statusLabel(status: string) {
   return status === 'online' ? t.online : status === 'connecting' ? t.connecting : status === 'unauthorized' ? t.unauthorized : t.offline;
@@ -120,7 +123,7 @@ export default function ChatScreen() {
               <Text style={[s.status, snap.typing && { color: colors.link }]} numberOfLines={1}>
                 {snap.typing ? t.typing : statusLabel(snap.status)}
               </Text>
-              <Text style={s.port}>· {portOf(conn)}</Text>
+              <Text style={conn.role === 'guest' ? s.status : s.port} numberOfLines={1}>· {conn.role === 'guest' ? t.agentOf(snap.ownerName || conn.invite?.from || '') : portOf(conn)}</Text>
             </View>
           </View>
         </Pressable>
@@ -128,6 +131,7 @@ export default function ChatScreen() {
           <Icon name="compose" size={22} color={colors.text} />
         </Pressable>
       </View>
+      {conn.role === 'guest' && <GuestStrip conn={conn} snap={snap} />}
       <FlatList
         inverted
         data={rows}
@@ -168,7 +172,23 @@ export default function ChatScreen() {
   );
 }
 
+/** What a guest may do here: scope · topic · time left. */
+function GuestStrip({ conn, snap }: { conn: Connection; snap: ClientSnapshot }) {
+  const s = useStyles();
+  const g = guestLimits(conn, snap);
+  const left = secondsLeft(g.expires_at);
+  const parts = [scopeLabel(g.scope), g.topic, left == null ? '' : left === 0 ? t.accessExpired : t.leftTime(spanText(left))].filter(Boolean);
+  return (
+    <View style={s.strip} accessibilityRole="text">
+      <Icon name="lock" size={13} color={colors.textDim} />
+      <Text style={s.stripText} numberOfLines={1}>{parts.join(' · ')}</Text>
+    </View>
+  );
+}
+
 const useStyles = makeStyles((colors, fs) => ({
+  strip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: colors.surface },
+  stripText: { color: colors.textDim, fontSize: fs(12), fontWeight: '600', flexShrink: 1 },
   screen: { flex: 1, backgroundColor: colors.bg, direction: isRTL ? 'rtl' : 'ltr' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

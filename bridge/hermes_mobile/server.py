@@ -56,6 +56,25 @@ class AttachmentError(ValueError):
     pass
 
 
+class JobsError(ValueError):
+    """A jobs request the phone can fix (bad schedule, unknown job...). The message is the error code."""
+
+
+def _guest_limits(msg: dict[str, Any]) -> dict[str, Any]:
+    """Scope / topic / expiry for a guest from an invite or update request."""
+    out: dict[str, Any] = {}
+    if "scope" in msg:
+        out["scope"] = str(msg.get("scope") or "full")
+        if out["scope"] not in ("chat", "read", "full"):
+            raise ValueError("scope")
+    if "topic" in msg:
+        out["topic"] = str(msg.get("topic") or "").strip()[:120] or None
+    if "expires_in" in msg:
+        secs = msg.get("expires_in")
+        out["expires_at"] = None if secs in (None, 0, "") else time.time() + max(60, min(int(secs), 366 * 86400))
+    return out
+
+
 def decode_attachments(raw: Any) -> list[dict[str, Any]]:
     """Validate ``[{name, mime, data(base64)}]`` from the phone -> ``[{name, mime, bytes}]``."""
     if raw in (None, []):
@@ -165,7 +184,9 @@ class MobileServer:
         if path in ("/ws", "/ws/"):
             return None  # continue with the WebSocket handshake
         if path == "/health":
-            return _json_response(HTTPStatus.OK, {"ok": True, "app": "hermes-mobile", "protocol": PROTOCOL_VERSION})
+            resp = _json_response(HTTPStatus.OK, {"ok": True, "app": "hermes-mobile", "protocol": PROTOCOL_VERSION})
+            resp.headers["Access-Control-Allow-Origin"] = "*"  # a guest's invite screen checks reachability
+            return resp
         if path.startswith("/media/"):
             return await asyncio.to_thread(self._serve_media, request, path[len("/media/"):])
         return _json_response(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
@@ -253,10 +274,12 @@ class MobileServer:
             return await self._reply_error(conn, "bad_json")
         kind = msg.get("type")
         # Re-check the token's device on every frame: a revoked phone is cut off immediately.
-        if self.registry.get(device.id) is None:
+        current = self.registry.get(device.id)
+        if current is None or current.expired:
             await self._reply_error(conn, "revoked")
             await conn.close(4003, "revoked")
             return
+        device = current  # pick up scope / settings changes made since connecting
         if kind == "ping":
             return await self._safe_send(conn, json.dumps({"type": "pong", "t": msg.get("t")}))
         if kind == "send":
@@ -276,8 +299,15 @@ class MobileServer:
             if self._active[conn]:
                 await self.handlers.on_presence(device, device.chat_id)
             return
-        if kind in ("invite", "devices", "revoke"):
+        if kind in ("invite", "devices", "revoke", "update_guest"):
             return await self._on_admin(conn, device, kind, msg)
+        if kind == "jobs":
+            return await self._on_jobs(conn, device, msg)
+        if kind == "notify":
+            prefs = msg.get("prefs")
+            if isinstance(prefs, dict) and len(json.dumps(prefs)) < 2000:
+                self.registry.update(device.id, notify=prefs)
+            return
         if kind == "push_token":
             token = msg.get("token")
             if token is None or (isinstance(token, str) and len(token) < 300):
@@ -292,10 +322,22 @@ class MobileServer:
             return await self._reply_error(conn, "forbidden", ref)
         if kind == "invite":
             role = "owner" if msg.get("role") == "owner" else "guest"
-            new_dev, token = self.registry.pair(str(msg.get("name") or ""), role=role)
+            try:
+                limits = _guest_limits(msg) if role == "guest" else {}
+                new_dev, token = self.registry.pair(str(msg.get("name") or ""), role=role, **limits)
+            except ValueError:
+                return await self._reply_error(conn, "bad_request", ref)
             payload = {"type": "invite", "ref": ref, "token": token, "role": role, "device": new_dev.public(),
                        "profile": self.handlers.profile_info()}
             return await self._safe_send(conn, json.dumps(payload, ensure_ascii=False))
+        if kind == "update_guest":
+            target = self.registry.get(str(msg.get("device_id") or ""))
+            if target is None or target.is_owner:
+                return await self._reply_error(conn, "not_found", ref)
+            try:
+                self.registry.update(target.id, **_guest_limits(msg))
+            except ValueError:
+                return await self._reply_error(conn, "bad_request", ref)
         if kind == "revoke":
             target = str(msg.get("device_id") or "")
             if target == device.id:
@@ -307,10 +349,27 @@ class MobileServer:
                         await c.close(4003, "revoked")
             if not ok:
                 return await self._reply_error(conn, "not_found", ref)
-        devices = [{**d.public(), "created_at": d.created_at, "last_seen": d.last_seen,
+        devices = [{**d.public(), "created_at": d.created_at, "last_seen": d.last_seen, "expired": d.expired,
                     "online": any(x.id == d.id for x in self._conn_device.values()), "me": d.id == device.id}
                    for d in self.registry.list()]
         await self._safe_send(conn, json.dumps({"type": "devices", "ref": ref, "devices": devices}, ensure_ascii=False))
+
+    async def _on_jobs(self, conn: ServerConnection, device: Device, msg: dict[str, Any]) -> None:
+        """Owner-only scheduled-job management: ``{type: jobs, op, ref, ...}`` -> ``{type: jobs, ref, ...}``."""
+        ref = msg.get("ref")
+        if not device.is_owner:
+            return await self._reply_error(conn, "forbidden", ref)
+        handler = getattr(self.handlers, "on_jobs", None)
+        if handler is None:
+            return await self._reply_error(conn, "jobs_unavailable", ref)
+        try:
+            result = await handler(device, msg)
+        except JobsError as exc:
+            return await self._reply_error(conn, str(exc), ref)
+        except Exception:
+            logger.exception("hermes-mobile: jobs request failed")
+            return await self._reply_error(conn, "jobs_failed", ref)
+        await self._safe_send(conn, json.dumps({"type": "jobs", "ref": ref, **result}, ensure_ascii=False, default=str))
 
     async def _on_send(self, conn: ServerConnection, device: Device, msg: dict[str, Any]) -> None:
         text = msg.get("text") if isinstance(msg.get("text"), str) else ""

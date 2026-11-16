@@ -19,6 +19,7 @@ interface Ctx {
   remove: (id: string) => Promise<void>;
   rename: (id: string, label: string) => Promise<void>;
   customize: (id: string, look: AgentLook | undefined) => Promise<void>;
+  setMuted: (id: string, muted: boolean) => void;
 }
 
 const ConnectionsContext = createContext<Ctx | null>(null);
@@ -90,10 +91,11 @@ export function ConnectionsProvider({ children }: { children: React.ReactNode })
 
   const add = useCallback(async (p: PairingPayload) => {
     const existing = (await loadConnections()).find((c) => c.url === p.url && c.profile === p.profile);
+    const invite = p.role === 'guest' ? { scope: p.scope, topic: p.topic, exp: p.exp, from: p.from } : undefined;
     const conn: Connection = existing
-      ? { ...existing, label: p.label, role: p.role }
+      ? { ...existing, label: p.label, role: p.role, invite }
       : { id: Crypto.randomUUID(), url: p.url, profile: p.profile, label: p.label, role: p.role,
-          createdAt: Date.now(), color: colorFor(p.url + p.profile) };
+          createdAt: Date.now(), color: colorFor(p.url + p.profile), invite };
     await saveToken(conn.id, p.token);
     clients.current.get(conn.id)?.stop();
     const client = makeClient(conn, p.token);
@@ -137,9 +139,26 @@ export function ConnectionsProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
+  const setMuted = useCallback((id: string, muted: boolean) => {
+    setConnections((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, muted } : c));
+      void saveConnections(next);
+      return next;
+    });
+  }, []);
+
+  // Tell every bridge which pushes this phone wants (kinds, quiet hours, per-agent mute).
+  useEffect(() => {
+    if (!settingsReady || !ready) return;
+    const tz = -new Date().getTimezoneOffset();
+    for (const c of connections) {
+      clients.current.get(c.id)?.setNotifyPrefs({ ...settings.notify, muted: !!c.muted || !settings.notifications, tz });
+    }
+  }, [settings.notify, settings.notifications, connections, settingsReady, ready]);
+
   const value = useMemo<Ctx>(
-    () => ({ ready, connections, client: (id) => clients.current.get(id), add, remove, rename, customize }),
-    [ready, connections, add, remove, rename, customize],
+    () => ({ ready, connections, client: (id) => clients.current.get(id), add, remove, rename, customize, setMuted }),
+    [ready, connections, add, remove, rename, customize, setMuted],
   );
   return <ConnectionsContext.Provider value={value}>{children}</ConnectionsContext.Provider>;
 }
@@ -151,7 +170,7 @@ export function useConnections(): Ctx {
 }
 
 const EMPTY: ClientSnapshot = {
-  version: 0, status: 'offline', messages: [], typing: false, profileLabel: '', deviceName: '', hostName: '', role: 'owner',
+  version: 0, status: 'offline', messages: [], typing: false, profileLabel: '', deviceName: '', hostName: '', ownerName: '', guest: null, role: 'owner',
   hasOlder: false, lastError: null,
 };
 const noopSubscribe = () => () => {};

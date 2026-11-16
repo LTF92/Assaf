@@ -29,6 +29,10 @@ export interface ClientSnapshot {
   deviceName: string;
   /** The machine the agent runs on ("MacBook Pro"). */
   hostName: string;
+  /** The Mac user's name (shown to guests as who shared the agent). */
+  ownerName: string;
+  /** For a guest phone: what the owner allowed. */
+  guest: GuestLimits | null;
   role: 'owner' | 'guest';
   hasOlder: boolean;
   lastError: string | null;
@@ -36,7 +40,15 @@ export interface ClientSnapshot {
 
 type Listener = () => void;
 
-export interface DeviceInfo {
+export type GuestScope = 'chat' | 'read' | 'full';
+
+export interface GuestLimits {
+  scope: GuestScope;
+  topic: string;
+  expires_at: number | null;
+}
+
+export interface DeviceInfo extends Partial<GuestLimits> {
   id: string;
   name: string;
   role: 'owner' | 'guest';
@@ -45,6 +57,42 @@ export interface DeviceInfo {
   last_seen: number | null;
   online: boolean;
   me: boolean;
+  expired?: boolean;
+}
+
+/** Structured schedule the app edits (maps to a cron expression on the bridge). */
+export interface JobSchedule {
+  freq: 'daily' | 'weekly' | 'monthly';
+  time: string; // HH:MM
+  days?: number[]; // 0 = Sunday
+  dom?: number;
+}
+
+export type JobShow = 'inbox' | 'chat' | 'silent';
+
+export interface Job {
+  id: string;
+  name: string;
+  prompt: string;
+  schedule: JobSchedule | null; // null: a schedule the app can't edit (shown as schedule_display)
+  schedule_display: string;
+  enabled: boolean;
+  state: string;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  show: JobShow;
+}
+
+export interface NotifyPrefs {
+  approval: boolean;
+  scheduled: boolean;
+  errors: boolean;
+  replies: boolean;
+  muted: boolean;
+  quiet: { on: boolean; start: number; end: number };
+  tz: number;
 }
 
 const TYPING_TTL_MS = 8000;
@@ -74,6 +122,7 @@ export class HermesClient {
   private loaded: Promise<void> | null = null;
   private active = true;
   private pushToken: string | null = null;
+  private notifyPrefs: NotifyPrefs | null = null;
   private snapshot: ClientSnapshot;
   private nextRef = 1;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
@@ -84,7 +133,7 @@ export class HermesClient {
     this.opts = opts;
     this.snapshot = {
       version: 0, status: 'offline', messages: [], typing: false, profileLabel: conn.label,
-      deviceName: '', hostName: '', role: conn.role, hasOlder: false, lastError: null,
+      deviceName: '', hostName: '', ownerName: '', guest: null, role: conn.role, hasOlder: false, lastError: null,
     };
   }
 
@@ -247,11 +296,16 @@ export class HermesClient {
         this.emit({
           status: 'online', lastError: null,
           profileLabel: msg.profile?.label || this.conn.label,
-          deviceName: msg.device?.name || '', hostName: msg.profile?.host || '', role: msg.device?.role === 'guest' ? 'guest' : 'owner',
+          deviceName: msg.device?.name || '', hostName: msg.profile?.host || '', ownerName: msg.profile?.owner || '',
+          role: msg.device?.role === 'guest' ? 'guest' : 'owner',
+          guest: msg.device?.role === 'guest'
+            ? { scope: msg.device.scope || 'full', topic: msg.device.topic || '', expires_at: msg.device.expires_at ?? null }
+            : null,
         });
         this.startPing();
         this.sendRaw({ type: 'presence', active: this.active });
         if (this.pushToken) this.sendRaw({ type: 'push_token', token: this.pushToken });
+        if (this.notifyPrefs) this.sendRaw({ type: 'notify', prefs: this.notifyPrefs });
         this.flushOutbox();
         break;
       case 'sync':
@@ -276,6 +330,7 @@ export class HermesClient {
         break;
       case 'invite':
       case 'devices':
+      case 'jobs':
         this.settle(msg.ref, msg);
         break;
       case 'pong':
@@ -356,6 +411,12 @@ export class HermesClient {
     this.sendRaw({ type: 'presence', active });
   }
 
+  /** What this phone wants pushed from this agent; re-sent on every reconnect. */
+  setNotifyPrefs(prefs: NotifyPrefs) {
+    this.notifyPrefs = prefs;
+    this.sendRaw({ type: 'notify', prefs });
+  }
+
   setPushToken(token: string | null) {
     this.pushToken = token;
     this.sendRaw({ type: 'push_token', token });
@@ -380,8 +441,28 @@ export class HermesClient {
   }
 
   /** Create a guest device on this profile and return its pairing payload (owner only). */
-  async invite(name: string): Promise<{ token: string; role: 'guest'; device: { id: string; name: string } }> {
-    return this.request({ type: 'invite', name });
+  async invite(
+    name: string,
+    limits?: { scope: GuestScope; topic: string; expires_in: number | null },
+  ): Promise<{ token: string; role: 'guest'; device: DeviceInfo; profile?: { owner?: string } }> {
+    return this.request({ type: 'invite', name, ...(limits ?? {}) });
+  }
+
+  async updateGuest(deviceId: string, limits: { scope?: GuestScope; topic?: string; expires_in?: number | null }): Promise<DeviceInfo[]> {
+    return (await this.request<{ devices: DeviceInfo[] }>({ type: 'update_guest', device_id: deviceId, ...limits })).devices;
+  }
+
+  // ── scheduled jobs (owner only)
+  async jobs(): Promise<Job[]> {
+    return (await this.request<{ jobs: Job[] }>({ type: 'jobs', op: 'list' })).jobs;
+  }
+
+  async jobOp(op: 'create' | 'update' | 'pause' | 'resume' | 'run', body: Record<string, unknown>): Promise<Job> {
+    return (await this.request<{ job: Job }>({ type: 'jobs', op, ...body }, 20000)).job;
+  }
+
+  async deleteJob(id: string): Promise<void> {
+    await this.request({ type: 'jobs', op: 'delete', id });
   }
 
   async devices(): Promise<DeviceInfo[]> {

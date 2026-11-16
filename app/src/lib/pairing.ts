@@ -7,6 +7,11 @@ export interface PairingPayload {
   profile: string;
   label: string;
   role: 'owner' | 'guest';
+  /** Guest invites carry what the owner allowed, so the guest sees it before accepting. */
+  scope?: 'chat' | 'read' | 'full';
+  topic?: string;
+  exp?: number | null; // unix seconds
+  from?: string; // who shared it
 }
 
 function b64urlEncode(text: string): string {
@@ -18,8 +23,9 @@ function b64urlEncode(text: string): string {
 
 /** Same format as bridge/hermes_mobile/pair.py. */
 export function buildPairingLink(p: PairingPayload): string {
-  const { v, url, token, profile, label, role } = p;
-  return `hermesmobile://pair?d=${b64urlEncode(JSON.stringify({ v, url, token, profile, label, role }))}`;
+  const { v, url, token, profile, label, role, scope, topic, exp, from } = p;
+  const extra = role === 'guest' ? { scope, topic, exp, from } : {};
+  return `hermesmobile://pair?d=${b64urlEncode(JSON.stringify({ v, url, token, profile, label, role, ...extra }))}`;
 }
 
 function b64urlDecode(input: string): string {
@@ -46,6 +52,14 @@ export function parsePairingLink(raw: string): PairingPayload | null {
       profile: String(payload.profile || 'default'),
       label: String(payload.label || payload.profile || 'Hermes'),
       role: payload.role === 'guest' ? 'guest' : 'owner',
+      ...(payload.role === 'guest'
+        ? {
+            scope: ['chat', 'read', 'full'].includes(payload.scope) ? payload.scope : 'full',
+            topic: typeof payload.topic === 'string' ? payload.topic.slice(0, 120) : '',
+            exp: typeof payload.exp === 'number' ? payload.exp : null,
+            from: typeof payload.from === 'string' ? payload.from.slice(0, 60) : '',
+          }
+        : {}),
     };
   } catch {
     return null;

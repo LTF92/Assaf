@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from hermes_mobile.core import ChatStore, DeviceRegistry  # noqa: E402
+from hermes_mobile.jobs import JobPrefs, JobsService  # noqa: E402
 from hermes_mobile.pair import detect_host, pairing_link, print_qr  # noqa: E402
 from hermes_mobile.server import MobileServer  # noqa: E402
 
@@ -80,15 +81,73 @@ APPROVAL = {"type": "approval", "state": "pending", "command": "rm -rf ./build &
                         {"label": "Deny", "value": "deny", "style": "danger"}]}
 
 
+class FakeCron:
+    """In-memory stand-in for Hermes' ``cron.jobs`` (same function names and job shape)."""
+
+    def __init__(self):
+        self.jobs: dict[str, dict] = {}
+
+    @staticmethod
+    def parse_schedule(expr: str) -> dict:
+        if len(expr.split()) != 5:
+            raise ValueError(expr)
+        return {"kind": "cron", "expr": expr, "display": expr}
+
+    def create_job(self, prompt, schedule, name=None, deliver=None, origin=None, **_):
+        job_id = uuid.uuid4().hex[:12]
+        self.jobs[job_id] = {"id": job_id, "name": name or prompt[:50], "prompt": prompt,
+                             "schedule": self.parse_schedule(schedule), "schedule_display": schedule,
+                             "enabled": True, "state": "scheduled", "next_run_at": "2026-11-17T07:00:00+03:00",
+                             "last_run_at": None, "last_status": None, "deliver": deliver, "origin": origin}
+        return dict(self.jobs[job_id])
+
+    def get_job(self, job_id):
+        job = self.jobs.get(job_id)
+        return dict(job) if job else None
+
+    def list_jobs(self, include_disabled=False):
+        return [dict(j) for j in self.jobs.values() if include_disabled or j["enabled"]]
+
+    def update_job(self, job_id, updates):
+        if job_id not in self.jobs:
+            return None
+        self.jobs[job_id].update(updates)
+        return dict(self.jobs[job_id])
+
+    def pause_job(self, job_id, reason=None):
+        return self.update_job(job_id, {"enabled": False, "state": "paused", "next_run_at": None})
+
+    def resume_job(self, job_id):
+        return self.update_job(job_id, {"enabled": True, "state": "scheduled", "next_run_at": "2026-11-17T07:00:00+03:00"})
+
+    def trigger_job(self, job_id):
+        return self.update_job(job_id, {"next_run_at": "now"})
+
+    def remove_job(self, job_id):
+        return self.jobs.pop(job_id, None) is not None
+
+
 class FakeHermes:
     def __init__(self, workdir: Path, delay: float = 0.4, profile: str = "demo", label: str = "Demo Agent"):
         self.server: MobileServer | None = None
         self.workdir = workdir
         self.delay = delay
         self.profile, self.label = profile, label
+        self.cron = FakeCron()
+        self.jobs = JobsService(JobPrefs(workdir / "jobs.json"), cron=self.cron)
 
     def profile_info(self):
-        return {"name": self.profile, "label": self.label, "host": "MacBook Pro"}
+        return {"name": self.profile, "label": self.label, "host": "MacBook Pro", "owner": "عبداللطيف"}
+
+    async def on_jobs(self, device, msg):
+        return self.jobs.handle(msg)
+
+    def seed_jobs(self, jobs):
+        for name, prompt, spec, status, enabled in jobs:
+            job = self.jobs.handle({"op": "create", "name": name, "prompt": prompt, "schedule": spec})["job"]
+            self.cron.update_job(job["id"], {"last_status": status, "last_run_at": "2026-11-16T07:00:00+03:00"})
+            if not enabled:
+                self.cron.pause_job(job["id"])
 
     async def seed(self, chat_id: str):
         await self._say(chat_id, text=REPORT, origin="scheduled")
@@ -170,6 +229,7 @@ async def main() -> None:
     ap.add_argument("--profile", default="demo")
     ap.add_argument("--label", default="Demo Agent")
     ap.add_argument("--seed", action="store_true", help="start with a scheduled report and a pending approval")
+    ap.add_argument("--jobs", help="JSON file of [name, prompt, schedule, last_status, enabled] to seed")
     args = ap.parse_args()
     workdir = Path(args.dir or tempfile.mkdtemp(prefix="hermes-mobile-dev-"))
     reg, store = DeviceRegistry(workdir / "devices.json"), ChatStore(workdir)
@@ -180,6 +240,9 @@ async def main() -> None:
     device, token = reg.pair("Dev phone")
     if args.seed:
         await fake.seed(device.chat_id)
+    if args.jobs:
+        import json as _json
+        fake.seed_jobs(_json.loads(Path(args.jobs).read_text(encoding="utf-8")))
     if args.token_file:
         Path(args.token_file).write_text(token)
     else:

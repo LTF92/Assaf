@@ -20,6 +20,7 @@ import datetime
 import functools
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -37,11 +38,34 @@ from gateway.platforms.base import (
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.platforms._shared import coerce_port, get_scoped_secret
 
-from .core import PRIVATE_KEY, ChatStore, Device, DeviceRegistry, looks_like_progress
+from .core import OWNER_CHAT_ID, PRIVATE_KEY, ChatStore, Device, DeviceRegistry, looks_like_progress
+from .jobs import JobPrefs, JobsService
+from .policy import FAILED, guest_block, guest_prompt, wants_push
 from .server import MobileServer
 
 # A reply arriving this long after the user's last message in the chat is treated as unprompted.
 UNPROMPTED_AFTER_S = 15 * 60
+
+
+@functools.lru_cache(maxsize=1)
+def _owner_name() -> str:
+    """The Mac user's full name, shown to guests as who shared the agent."""
+    import getpass
+    import platform
+    import subprocess
+    if platform.system() == "Darwin":
+        with contextlib.suppress(Exception):
+            name = subprocess.run(["id", "-F"], capture_output=True, text=True, timeout=2).stdout.strip()
+            if name:
+                return name
+    with contextlib.suppress(Exception):
+        import pwd
+        gecos = pwd.getpwuid(os.getuid()).pw_gecos.split(",")[0].strip()
+        if gecos:
+            return gecos
+    with contextlib.suppress(Exception):
+        return getpass.getuser()
+    return ""
 
 
 @functools.lru_cache(maxsize=1)
@@ -129,6 +153,7 @@ class HermesMobileAdapter(BasePlatformAdapter):
         self.server = MobileServer(self.registry, self.store, self, host=self.host, port=self.port)
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._last_user_at: dict[str, float] = {}
+        self.jobs = JobsService(JobPrefs(self._dir / "jobs.json"), platform=PLATFORM_NAME, origin_chat=OWNER_CHAT_ID)
         self._tool_started: dict[str, float] = {}
 
     # ── lifecycle
@@ -158,7 +183,18 @@ class HermesMobileAdapter(BasePlatformAdapter):
 
     # ── BridgeHandlers (called by the server)
     def profile_info(self) -> dict[str, Any]:
-        return {"name": self._profile, "label": self.label or self._profile, "host": _host_name()}
+        return {"name": self._profile, "label": self.label or self._profile, "host": _host_name(),
+                "owner": _owner_name()}
+
+    async def on_jobs(self, device: Device, msg: dict[str, Any]) -> dict[str, Any]:
+        return await asyncio.to_thread(self.jobs.handle, msg)
+
+    def guest_limits(self, chat_id: str) -> Optional[Device]:
+        """The guest device behind a guest chat, or None for the owner's chat."""
+        if chat_id == OWNER_CHAT_ID:
+            return None
+        devices = self.registry.devices_for_chat(chat_id)
+        return devices[0] if devices else None
 
     @staticmethod
     def _user_id(device: Device) -> str:
@@ -190,7 +226,16 @@ class HermesMobileAdapter(BasePlatformAdapter):
                                    chat_type="dm", user_id=self._user_id(device), user_name=device.name)
         event = MessageEvent(text=text, message_type=msg_type, source=source, message_id=message["id"],
                              timestamp=datetime.datetime.now(), media_urls=media_urls, media_types=media_types)
+        if not device.is_owner:
+            prompt = self._guest_prompt(device)
+            if hasattr(event, "channel_prompt"):
+                event.channel_prompt = prompt
+            else:  # older Hermes: no per-channel prompt, so the limits ride along with the message
+                event.text = f"[{prompt}]\n\n{text}"
         await self.handle_message(event)
+
+    def _guest_prompt(self, device: Device) -> str:
+        return guest_prompt(device.name, device.scope, device.topic)
 
     async def on_action(self, device: Device, message: dict[str, Any], value: str) -> Optional[str]:
         card = message.get("card") or {}
@@ -198,11 +243,16 @@ class HermesMobileAdapter(BasePlatformAdapter):
         chat_id = message["chat_id"]
         ctype = card.get("type")
         if ctype == "approval":
+            if not device.is_owner:
+                return None  # approvals are the owner's call
             from tools.approval import resolve_gateway_approval_card
             count = resolve_gateway_approval_card(private.get("session_key", ""), value, private.get("request_id"),
                                                   actor_id=self._user_id(device), extra=self.config.extra)
             if count:
-                self.resume_typing_for_chat(chat_id)
+                self.resume_typing_for_chat(private.get("guest_chat") or chat_id)
+                if private.get("guest_chat"):
+                    verdict = "✓" if value != "deny" else "✕"
+                    await self._post_note(private["guest_chat"], f"{verdict} {'Approved' if value != 'deny' else 'Denied'} by the owner.")
             return {"once": "Approved once", "session": "Approved for this session", "always": "Always approved",
                     "deny": "Denied"}.get(value, value) if count else None
         if ctype == "clarify":
@@ -243,14 +293,38 @@ class HermesMobileAdapter(BasePlatformAdapter):
         content = content or ""
         kind = "tool" if looks_like_progress(content) else "text"
         interim = bool((metadata or {}).get("_interim_send"))
-        extra = {"origin": "scheduled"} if kind == "text" and not interim and self._is_unprompted(chat_id, metadata) else {}
+        extra: dict[str, Any] = {}
+        push_kind = "reply"
+        if kind == "text" and not interim and self._is_unprompted(chat_id, metadata):
+            job = self._job_ref(metadata)
+            failed = bool(FAILED.search(content[:300]))
+            show = self.jobs.prefs.show(job["id"]) if job else "inbox"
+            if failed or show != "chat":
+                extra["origin"] = "scheduled"
+            if job:
+                extra["job"] = job
+            push_kind = "error" if failed else "scheduled"
         msg = self.store.upsert(chat_id, role="assistant", kind=kind, text=content, reply_to=reply_to,
                                 interim=interim, tool={"name": "progress", "status": "info"} if kind == "tool" else None,
                                 **extra)
         await self.server.publish_message(msg)
         if kind == "text" and not interim:
-            self._schedule_push(chat_id, self.profile_info()["label"], content)
+            title = self.profile_info()["label"] + (f" · {extra['job']['name']}" if extra.get("job") else "")
+            self._schedule_push(chat_id, title, content, kind=push_kind)
         return SendResult(success=True, message_id=msg["id"])
+
+    def _job_ref(self, metadata: Optional[dict[str, Any]]) -> Optional[dict[str, str]]:
+        job_id = (metadata or {}).get("job_id") or (metadata or {}).get("cron_job_id")
+        if not job_id:
+            return None
+        name = ""
+        with contextlib.suppress(Exception):
+            name = (self.jobs.cron.get_job(str(job_id)) or {}).get("name") or ""
+        return {"id": str(job_id), "name": name}
+
+    async def _post_note(self, chat_id: str, text: str) -> None:
+        msg = self.store.upsert(chat_id, role="system", kind="text", text=text)
+        await self.server.publish_message(msg)
 
     async def edit_message(self, chat_id: str, message_id: str, content: str, *, finalize: bool = False,
                            **kwargs: Any) -> SendResult:
@@ -297,7 +371,7 @@ class HermesMobileAdapter(BasePlatformAdapter):
         msg = self.store.upsert(chat_id, role="assistant", kind="media", text=caption or "", media=media,
                                 reply_to=reply_to, **{PRIVATE_KEY: {"path": str(p.resolve())}})
         await self.server.publish_message(msg)
-        self._schedule_push(chat_id, self.profile_info()["label"], caption or f"📎 {name}")
+        self._schedule_push(chat_id, self.profile_info()["label"], caption or f"📎 {name}", kind="reply")
         return SendResult(success=True, message_id=msg["id"])
 
     async def send_image(self, chat_id: str, image_url: str, caption: Optional[str] = None,
@@ -331,15 +405,23 @@ class HermesMobileAdapter(BasePlatformAdapter):
         msg = self.store.upsert(chat_id, role="assistant", kind="card", text=text, card=card,
                                 **{PRIVATE_KEY: private})
         await self.server.publish_message(msg)
-        self._schedule_push(chat_id, push_title, text, force=True)
+        self._schedule_push(chat_id, push_title, text, kind="approval")
         return SendResult(success=True, message_id=msg["id"])
 
     async def _send_exec_approval_prompt(self, prompt) -> SendResult:
         actions = [{"label": label, "value": choice, "style": style or ""} for label, choice, style in prompt.actions]
         card = {"type": "approval", "title": "Approval needed", "command": prompt.command,
                 "description": prompt.description, "smart_denied": bool(prompt.smart_denied), "actions": actions}
-        return await self._send_card(prompt.chat_id, card, prompt.text,
-                                     {"session_key": prompt.session_key, "request_id": prompt.request_id},
+        private = {"session_key": prompt.session_key, "request_id": prompt.request_id}
+        guest = self.guest_limits(prompt.chat_id)
+        if guest is not None:
+            # A guest never approves: the owner's phones get the card, the guest sees that it waits.
+            card["guest"] = {"id": guest.id, "name": guest.name}
+            private["guest_chat"] = prompt.chat_id
+            await self._post_note(prompt.chat_id, "⏳ Waiting for the owner to approve a step.")
+            return await self._send_card(OWNER_CHAT_ID, card, prompt.text, private,
+                                         f"⚠️ {guest.name} · {self.profile_info()['label']}: approval needed")
+        return await self._send_card(prompt.chat_id, card, prompt.text, private,
                                      f"⚠️ {self.profile_info()['label']}: approval needed")
 
     async def send_clarify(self, chat_id: str, question: str, choices: Optional[list], clarify_id: str,
@@ -406,10 +488,11 @@ class HermesMobileAdapter(BasePlatformAdapter):
         self._publish_threadsafe(msg)
 
     # ── push notifications (Expo)
-    def _schedule_push(self, chat_id: str, title: str, body: str, force: bool = False) -> None:
+    def _schedule_push(self, chat_id: str, title: str, body: str, kind: str = "reply") -> None:
         if not self.push_enabled or self.server.has_active_viewer(chat_id):
             return
-        tokens = [d.push_token for d in self.registry.devices_for_chat(chat_id) if d.push_token]
+        tokens = [d.push_token for d in self.registry.devices_for_chat(chat_id)
+                  if d.push_token and wants_push(d.notify, kind)]
         if not tokens:
             return
         body = " ".join((body or "").split())[:180]
@@ -457,10 +540,16 @@ def _adapter_for_hook() -> tuple[Optional[HermesMobileAdapter], Optional[str]]:
     return None, None
 
 
-def _on_pre_tool_call(**kwargs: Any) -> None:
+def _on_pre_tool_call(**kwargs: Any) -> Optional[dict[str, Any]]:
     adapter, chat_id = _adapter_for_hook()
     if adapter is None:
-        return
+        return None
+    tool_name = str(kwargs.get("tool_name") or "tool")
+    guest = adapter.guest_limits(chat_id)
+    if guest is not None:
+        message = guest_block(guest.scope, tool_name)
+        if message:
+            return {"action": "block", "message": message}
     call_id = str(kwargs.get("tool_call_id") or uuid.uuid4().hex)
     with contextlib.suppress(Exception):
         adapter.record_tool_start(chat_id, call_id, str(kwargs.get("tool_name") or "tool"), kwargs.get("args"))

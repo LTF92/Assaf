@@ -1,10 +1,11 @@
 import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
 import React from 'react';
-import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { authenticate, canLock } from '../components/AppLock';
+import { Group, Row, Section, Toggle, Value } from '../components/Form';
 import { Icon } from '../components/Icon';
 import { PressScale } from '../components/motion';
 import { Segmented } from '../components/Segmented';
@@ -13,66 +14,6 @@ import { useAllChats } from '../lib/inbox';
 import { useSettings, type Settings } from '../lib/settings';
 import { useConnections } from '../lib/store';
 import { colors, makeStyles } from '../lib/theme';
-
-function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <Switch
-      value={value}
-      onValueChange={onChange}
-      accessibilityLabel={label}
-      trackColor={{ true: colors.accent, false: colors.switchOff }}
-      thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
-      {...(Platform.OS === 'web' ? ({ activeThumbColor: '#FFFFFF' } as object) : null)}
-      ios_backgroundColor={colors.switchOff}
-    />
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const s = useStyles();
-  return (
-    <View style={{ gap: 8 }}>
-      <Text style={s.h2}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Group({ children }: { children: React.ReactNode }) {
-  const s = useStyles();
-  const items = React.Children.toArray(children).filter(Boolean);
-  return (
-    <View style={s.group}>
-      {items.map((c, i) => (
-        <View key={i} style={i > 0 && s.divider}>{c}</View>
-      ))}
-    </View>
-  );
-}
-
-function Row({ label, hint, children, onPress }: { label: string; hint?: string; children?: React.ReactNode; onPress?: () => void }) {
-  const s = useStyles();
-  const body = (
-    <View style={[s.row, hint ? { minHeight: 62 } : null]}>
-      <View style={{ flex: 1, gap: 1 }}>
-        <Text style={s.label}>{label}</Text>
-        {hint ? <Text style={s.hint}>{hint}</Text> : null}
-      </View>
-      {children}
-    </View>
-  );
-  return onPress ? <Pressable onPress={onPress} accessibilityRole="button">{body}</Pressable> : body;
-}
-
-function Value({ text }: { text: string }) {
-  const s = useStyles();
-  return (
-    <View style={s.valueWrap}>
-      <Text style={s.value}>{text}</Text>
-      <Icon name="forward" size={16} color={colors.textDim} strokeWidth={2} />
-    </View>
-  );
-}
 
 export default function SettingsScreen() {
   const { settings, set, reset } = useSettings();
@@ -156,6 +97,11 @@ export default function SettingsScreen() {
             <Row label={t.notifications} hint={t.notificationsHint}>
               <Toggle label={t.notifications} value={settings.notifications} onChange={up('notifications')} />
             </Row>
+            {settings.notifications && (
+              <Row label={t.notifyWhen} onPress={() => router.push('/notifications')}>
+                <Value text="" />
+              </Row>
+            )}
             <Row label={t.timestamps}>
               <Toggle label={t.timestamps} value={settings.timestamps} onChange={up('timestamps')} />
             </Row>

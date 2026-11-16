@@ -14,6 +14,7 @@ import { timeLabel } from '../lib/time';
 import { colors, makeStyles, mono } from '../lib/theme';
 import type { ClientSnapshot } from '../lib/client';
 import type { Connection } from '../lib/types';
+import { guestLimits, scopeLabel, secondsLeft, spanText } from '../lib/share';
 
 const LOGO = require('../../assets/logo.png');
 
@@ -59,7 +60,9 @@ function AgentRow({ conn, snap, index, first }: { conn: Connection; snap?: Clien
 
 function StatusCard({ chats }: { chats: { conn: Connection; snap?: ClientSnapshot }[] }) {
   const s = useStyles();
-  const online = chats.filter((c) => c.snap?.status === 'online').length;
+  const owners = chats.filter((c) => c.conn.role !== 'guest');
+  const guests = chats.filter((c) => c.conn.role === 'guest');
+  const online = owners.filter((c) => c.snap?.status === 'online').length;
   const host = chats.find((c) => c.snap?.hostName)?.snap?.hostName;
   const ts = chats.some((c) => /\/\/100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(c.conn.url) || c.conn.url.includes('.ts.net'));
   const allUp = online === chats.length;
@@ -77,6 +80,55 @@ function StatusCard({ chats }: { chats: { conn: Connection; snap?: ClientSnapsho
         </Text>
       </View>
     </View>
+  );
+}
+
+function GuestCard({ conn, snap, index }: { conn: Connection; snap?: ClientSnapshot; index: number }) {
+  const s = useStyles();
+  const name = agentName(conn, snap?.profileLabel);
+  const limits = guestLimits(conn, snap);
+  const from = snap?.ownerName || conn.invite?.from || '';
+  const on = snap?.status === 'online';
+  const left = secondsLeft(limits.expires_at);
+  const chips = [scopeLabel(limits.scope), limits.topic || '', left == null ? '' : t.endsIn(spanText(left))].filter(Boolean);
+  return (
+    <Appear delay={index * 50} from={12}>
+      <PressScale style={s.guestCard} to={0.98} onPress={() => router.push(`/chat/${conn.id}`)} accessibilityRole="button" accessibilityLabel={name}>
+        <View style={s.guestTop}>
+          <Avatar label={name} seed={conn.profile + conn.url} look={conn.look} size={52} />
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={s.name} numberOfLines={1}>{name}</Text>
+            <Text style={s.preview} numberOfLines={1}>{from ? t.sharedBy(from) : t.sharedAgent}</Text>
+          </View>
+          <View style={s.guestStatus}>
+            <View style={[s.pillDot, { backgroundColor: on ? colors.okDot : colors.switchOff }]} />
+            <Text style={[s.pillText, { color: on ? colors.ok : colors.textDim }]}>{on ? t.online : t.offline}</Text>
+          </View>
+        </View>
+        <View style={s.chips}>
+          {chips.map((c) => <View key={c} style={s.chip}><Text style={s.chipText} numberOfLines={1}>{c}</Text></View>)}
+        </View>
+      </PressScale>
+    </Appear>
+  );
+}
+
+function GuestSection({ guests, alone }: { guests: { conn: Connection; snap?: ClientSnapshot }[]; alone: boolean }) {
+  const s = useStyles();
+  return (
+    <>
+      <Text style={[s.h2, { marginBottom: -6 }]}>{t.sharedWithYou}</Text>
+      {guests.map(({ conn, snap }, i) => <GuestCard key={conn.id} conn={conn} snap={snap} index={i} />)}
+      {alone && (
+        <View style={s.ownCard}>
+          <Text style={s.ownTitle}>{t.haveOwnAgents}</Text>
+          <Text style={s.ownHint}>{t.haveOwnHint}</Text>
+          <PressScale style={s.ownBtn} onPress={() => router.push('/add')} accessibilityRole="button">
+            <Text style={s.ownBtnText}>{t.pairMyDevice}</Text>
+          </PressScale>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -127,7 +179,9 @@ export default function Home() {
   if (chats.length === 0) {
     return (<><Stack.Screen options={{ headerShown: false }} /><Welcome /></>);
   }
-  const online = chats.filter((c) => c.snap?.status === 'online').length;
+  const owners = chats.filter((c) => c.conn.role !== 'guest');
+  const guests = chats.filter((c) => c.conn.role === 'guest');
+  const online = owners.filter((c) => c.snap?.status === 'online').length;
 
   return (
     <View style={s.screen}>
@@ -148,35 +202,41 @@ export default function Home() {
           </View>
         </View>
 
-        <StatusCard chats={chats} />
+        {owners.length > 0 && (
+          <>
+            <StatusCard chats={owners} />
 
-        <PressScale to={0.98} style={s.inbox} onPress={() => router.push('/inbox')} accessibilityRole="button" accessibilityLabel={t.inboxOpen}>
-          <Icon name="inbox" size={26} color="#FFFFFF" />
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <Text style={s.inboxTitle}>{t.inbox}</Text>
-            <Text style={s.inboxSub} numberOfLines={1}>{t.inboxHint}</Text>
-          </View>
-          {unread > 0 && (
-            <View style={s.badge} accessibilityLabel={t.newUpdates(unread)}>
-              <Text style={s.badgeText}>{unread.toLocaleString(isRTL ? 'ar' : 'en')}</Text>
+            <PressScale to={0.98} style={s.inbox} onPress={() => router.push('/inbox')} accessibilityRole="button" accessibilityLabel={t.inboxOpen}>
+              <Icon name="inbox" size={26} color="#FFFFFF" />
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={s.inboxTitle}>{t.inbox}</Text>
+                <Text style={s.inboxSub} numberOfLines={1}>{t.inboxHint}</Text>
+              </View>
+              {unread > 0 && (
+                <View style={s.badge} accessibilityLabel={t.newUpdates(unread)}>
+                  <Text style={s.badgeText}>{unread.toLocaleString(isRTL ? 'ar' : 'en')}</Text>
+                </View>
+              )}
+            </PressScale>
+
+            <View style={s.sectionHead}>
+              <Text style={s.h2}>{t.agents}</Text>
+              <Text style={s.sectionMeta}>{t.agentsOnline(online)}</Text>
             </View>
-          )}
-        </PressScale>
 
-        <View style={s.sectionHead}>
-          <Text style={s.h2}>{t.agents}</Text>
-          <Text style={s.sectionMeta}>{t.agentsOnline(online)}</Text>
-        </View>
+            <View style={{ marginTop: -8 }}>
+              {owners.map(({ conn, snap }, i) => (
+                <AgentRow key={conn.id} conn={conn} snap={snap} index={i} first={i === 0} />
+              ))}
+            </View>
+          </>
+        )}
 
-        <View style={{ marginTop: -8 }}>
-          {chats.map(({ conn, snap }, i) => (
-            <AgentRow key={conn.id} conn={conn} snap={snap} index={i} first={i === 0} />
-          ))}
-        </View>
+        {guests.length > 0 && <GuestSection guests={guests} alone={owners.length === 0} />}
 
         <View style={s.footer}>
           <Icon name="lock" size={16} color={colors.textDim} />
-          <Text style={s.footerText}>{t.privateFooter}</Text>
+          <Text style={s.footerText}>{owners.length ? t.privateFooter : t.guestFooter}</Text>
         </View>
       </ScrollView>
     </View>
@@ -197,6 +257,17 @@ const useStyles = makeStyles((colors, fs) => {
     roundBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
 
     status: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.surface },
+    guestCard: { gap: 12, padding: 14, borderRadius: 18, backgroundColor: colors.surface },
+    guestTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    guestStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    chip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.bg, maxWidth: '100%' },
+    chipText: { color: colors.text, fontSize: fs(13), fontWeight: '600' },
+    ownCard: { alignItems: 'center', gap: 10, paddingVertical: 22, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#B88CFF' },
+    ownTitle: { color: colors.text, fontSize: fs(15), fontWeight: '600', textAlign: 'center' },
+    ownHint: { color: colors.textDim, fontSize: fs(14), lineHeight: fs(22), textAlign: 'center' },
+    ownBtn: { height: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.bg, justifyContent: 'center' },
+    ownBtnText: { color: colors.text, fontSize: fs(15), fontWeight: '600' },
     statusIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
     statusTitle: { color: colors.text, fontSize: fs(16), fontWeight: '600', textAlign: start },
     statusSub: { color: colors.textDim, fontSize: fs(13), textAlign: start },

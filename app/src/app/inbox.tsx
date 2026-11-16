@@ -9,7 +9,7 @@ import { Markdown } from '../components/Markdown';
 import { Appear, PressScale } from '../components/motion';
 import { isRTL, t } from '../lib/i18n';
 import { markRead, useInbox, type InboxItem, type InboxKind } from '../lib/inbox';
-import { agentName } from '../lib/store';
+import { agentName, useConnections } from '../lib/store';
 import { timeLabel } from '../lib/time';
 import { colors, makeStyles, mono } from '../lib/theme';
 
@@ -102,6 +102,8 @@ export default function Inbox() {
 
   const filters: [Filter, string][] = [['all', t.filterAll], ['scheduled', t.filterScheduled], ['approval', t.filterApprovals], ['error', t.filterErrors]];
 
+  const { connections } = useConnections();
+  const hasOwner = connections.some((c) => c.role === 'owner');
   return (
     <View style={s.screen}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -115,7 +117,12 @@ export default function Inbox() {
             <Icon name="check" size={20} color={colors.text} strokeWidth={2} />
           </PressScale>
         )}
-        <PressScale style={s.round} onPress={() => router.push('/settings')} accessibilityLabel={t.notifications}>
+        {hasOwner && (
+          <PressScale style={s.round} onPress={() => router.push('/jobs')} accessibilityLabel={t.jobsTitle}>
+            <Icon name="calendar" size={20} color={colors.text} />
+          </PressScale>
+        )}
+        <PressScale style={s.round} onPress={() => router.push('/notifications')} accessibilityLabel={t.notifications}>
           <Icon name="bell" size={20} color={colors.text} />
         </PressScale>
       </View>

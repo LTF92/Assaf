@@ -1,24 +1,26 @@
-import { useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FieldLabel, ScreenHeader } from '../../components/Form';
+import { Appear } from '../../components/motion';
 import type { DeviceInfo } from '../../lib/client';
-import { t } from '../../lib/i18n';
-import { buildPairingLink } from '../../lib/pairing';
-import { useChat, useConnections } from '../../lib/store';
-import { colors, radius, makeStyles } from '../../lib/theme';
+import { isRTL, t } from '../../lib/i18n';
+import { initial, scopeLabel, secondsLeft, spanText } from '../../lib/share';
+import { agentName, useChat, useConnections } from '../../lib/store';
+import { timeLabel } from '../../lib/time';
+import { avatarPalette, avatarInk, colors, makeStyles } from '../../lib/theme';
 
-/** Owner-only: give someone access to THIS profile (guest QR), and see / revoke paired devices. */
-export default function ShareProfile() {
+/** Owner-only: who this agent is shared with, their limits, and invites not used yet. */
+export default function ShareManage() {
   const s = useStyles();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { connections } = useConnections();
   const conn = connections.find((c) => c.id === id);
   const { client, snap } = useChat(id);
-  const [name, setName] = useState('');
-  const [link, setLink] = useState<string | null>(null);
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
+  const [devices, setDevices] = useState<DeviceInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const online = snap.status === 'online';
 
@@ -26,89 +28,121 @@ export default function ShareProfile() {
     if (!client || !online) return;
     try {
       setDevices(await client.devices());
+      setError(null);
     } catch (e) {
       setError(String((e as Error).message));
     }
   }, [client, online]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useFocusEffect(useCallback(() => void refresh(), [refresh]));
 
   if (!conn || !client) return <View style={s.screen} />;
-  if (snap.role !== 'owner') return <View style={s.screen}><Text style={s.hint}>{t.ownerOnly}</Text></View>;
+  const label = agentName(conn, snap.profileLabel);
+  const guests = (devices ?? []).filter((d) => d.role === 'guest');
+  const active = guests.filter((d) => d.last_seen != null);
+  const pending = guests.filter((d) => d.last_seen == null);
 
-  const create = async () => {
-    setError(null);
-    try {
-      const inv = await client.invite(name.trim() || t.guest);
-      setLink(buildPairingLink({ v: 1, url: conn.url, token: inv.token, profile: conn.profile,
-        label: snap.profileLabel || conn.label, role: 'guest' }));
-      setName('');
-      void refresh();
-    } catch (e) {
-      setError(String((e as Error).message));
-    }
-  };
-
-  const revoke = (d: DeviceInfo) =>
-    Alert.alert(d.name, t.revokeConfirm, [
+  const revoke = (d: DeviceInfo, pendingInvite = false) =>
+    Alert.alert(pendingInvite ? t.unusedInvite : d.name, pendingInvite ? undefined : t.revokeGuestQ(d.name), [
       { text: t.cancel, style: 'cancel' },
-      { text: t.revoke, style: 'destructive', onPress: async () => setDevices(await client.revokeDevice(d.id)) },
+      { text: t.revokeAccess, style: 'destructive', onPress: async () => setDevices(await client.revokeDevice(d.id)) },
     ]);
 
+  const invite = (device?: string) => router.push({ pathname: '/share/invite', params: device ? { id, device } : { id } });
+
   return (
-    <ScrollView style={s.screen} contentContainerStyle={{ padding: 20, gap: 16 }}>
-      <Text style={s.hint}>{t.shareHint}</Text>
-      {!online ? <Text style={s.error}>{t.needOnline}</Text> : null}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <TextInput style={[s.input, { flex: 1 }]} value={name} onChangeText={setName} placeholder={t.guestName}
-          placeholderTextColor={colors.textFaint} />
-        <Pressable style={[s.btn, !online && { opacity: 0.4 }]} disabled={!online} onPress={create}>
-          <Text style={s.btnText}>{t.createInvite}</Text>
-        </Pressable>
-      </View>
-      {error ? <Text style={s.error}>{error}</Text> : null}
-      {link ? (
-        <View style={s.qrBox}>
-          <View style={s.qrBg}><QRCode value={link} size={220} backgroundColor="#FFFFFF" color="#0B0D12" /></View>
-          <Pressable style={s.btnOutline} onPress={() => Share.share({ message: link })}>
-            <Text style={s.btnOutlineText}>{t.shareLink}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      <Text style={s.section}>{t.devices}</Text>
-      {devices.map((d) => (
-        <View key={d.id} style={s.device}>
-          <View style={[s.dot, { backgroundColor: d.online ? colors.ok : colors.textFaint }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.devName}>{d.name}{d.me ? ` (${t.thisDevice})` : ''}</Text>
-            <Text style={s.devMeta}>{d.role === 'guest' ? t.guest : t.owner}</Text>
+    <View style={s.screen}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView contentContainerStyle={[s.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 }]}>
+        <ScreenHeader title={t.shareTitle(label)} size={24} onPlus={online && snap.role === 'owner' ? () => invite() : undefined} plusLabel={t.invitePerson} />
+        <Text style={s.intro}>{t.shareIntro}</Text>
+        {snap.role !== 'owner' ? <Text style={s.error}>{t.ownerOnly}</Text> : null}
+        {!online ? <Text style={s.error}>{t.needOnline}</Text> : null}
+        {error ? <Text style={s.error}>{error}</Text> : null}
+        {online && devices == null && !error ? <ActivityIndicator color={colors.link} style={{ marginTop: 30 }} /> : null}
+
+        {devices != null && guests.length === 0 && (
+          <View style={s.empty}>
+            <Text style={s.emptyText}>{t.noGuests}</Text>
+            <Pressable style={s.emptyBtn} onPress={() => invite()} accessibilityRole="button">
+              <Text style={s.emptyBtnText}>{t.invitePerson}</Text>
+            </Pressable>
           </View>
-          {!d.me ? (
-            <Pressable onPress={() => revoke(d)} hitSlop={8}><Text style={s.revoke}>{t.revoke}</Text></Pressable>
-          ) : null}
-        </View>
-      ))}
-    </ScrollView>
+        )}
+
+        {active.length > 0 && <FieldLabel>{t.haveAccess}</FieldLabel>}
+        {active.map((d, i) => {
+          const left = secondsLeft(d.expires_at);
+          const bg = avatarPalette[i % avatarPalette.length];
+          const ends = d.expired ? t.accessExpired : left == null ? t.noExpiry : t.endsIn(spanText(left));
+          const seen = d.online ? t.online : t.lastActive(timeLabel(d.last_seen ?? undefined));
+          return (
+            <Appear key={d.id} delay={i * 40}>
+              <View style={s.card}>
+                <View style={s.cardTop}>
+                  <View style={[s.face, { backgroundColor: bg }]}><Text style={[s.faceText, { color: avatarInk(bg) }]}>{initial(d.name)}</Text></View>
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text style={s.name} numberOfLines={1}>{d.name}</Text>
+                    <Text style={s.meta} numberOfLines={1}>{ends} · {seen}</Text>
+                  </View>
+                </View>
+                <Text style={s.scope}>{scopeLabel(d.scope)} · {d.topic || t.noTopic}</Text>
+                <View style={s.actions}>
+                  <Pressable style={s.action} onPress={() => invite(d.id)} accessibilityRole="button">
+                    <Text style={s.actionText}>{t.editScope}</Text>
+                  </Pressable>
+                  <Pressable style={s.action} onPress={() => revoke(d)} accessibilityRole="button">
+                    <Text style={[s.actionText, { color: colors.danger }]}>{t.revokeAccess}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </Appear>
+          );
+        })}
+
+        {pending.length > 0 && <FieldLabel>{t.pendingInvites}</FieldLabel>}
+        {pending.map((d) => {
+          const left = secondsLeft(d.expires_at);
+          return (
+            <View key={d.id} style={s.pending}>
+              <View style={{ flex: 1, gap: 1 }}>
+                <Text style={s.pendingTitle} numberOfLines={1}>{d.name && d.name !== t.guest ? `${t.unusedInvite} · ${d.name}` : t.unusedInvite}</Text>
+                <Text style={s.meta}>{scopeLabel(d.scope)} · {left == null ? t.noExpiry : t.endsIn(spanText(left))}</Text>
+              </View>
+              <Pressable style={s.cancel} onPress={() => revoke(d, true)} accessibilityRole="button">
+                <Text style={[s.actionText, { color: colors.danger }]}>{t.cancel}</Text>
+              </Pressable>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
-const useStyles = makeStyles((colors, fs) => ({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  hint: { color: colors.textDim, fontSize: fs(14), lineHeight: fs(20), padding: 4 },
-  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 10, fontSize: fs(16) },
-  btn: { backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 14, justifyContent: 'center' },
-  btnText: { color: colors.accentText, fontWeight: '800' },
-  btnOutline: { borderWidth: 1, borderColor: colors.accent, borderRadius: radius.pill, paddingVertical: 10, paddingHorizontal: 22 },
-  btnOutlineText: { color: colors.accent, fontWeight: '700' },
-  error: { color: colors.danger },
-  qrBox: { alignItems: 'center', gap: 14, paddingVertical: 8 },
-  qrBg: { padding: 14, backgroundColor: '#FFFFFF', borderRadius: radius.md },
-  section: { color: colors.textFaint, fontSize: fs(12), textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 },
-  device: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  devName: { color: colors.text, fontSize: fs(16) },
-  devMeta: { color: colors.textFaint, fontSize: fs(12) },
-  revoke: { color: colors.danger, fontWeight: '600' },
-}));
+const useStyles = makeStyles((colors, fs) => {
+  const start = isRTL ? 'right' : 'left';
+  return {
+    screen: { flex: 1, backgroundColor: colors.bg, direction: isRTL ? 'rtl' : 'ltr' },
+    content: { paddingHorizontal: 20, gap: 12 },
+    intro: { color: colors.textDim, fontSize: fs(14), lineHeight: fs(22), textAlign: start, marginBottom: 4 },
+    error: { color: colors.danger, fontSize: fs(14), textAlign: start },
+    card: { gap: 10, padding: 14, borderRadius: 18, backgroundColor: colors.surface },
+    cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    face: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    faceText: { fontSize: fs(17), fontWeight: '700' },
+    name: { color: colors.text, fontSize: fs(16), fontWeight: '700', textAlign: start },
+    meta: { color: colors.textDim, fontSize: fs(13), textAlign: start },
+    scope: { color: colors.text, fontSize: fs(14), fontWeight: '600', textAlign: start },
+    actions: { flexDirection: 'row', gap: 8 },
+    action: { flex: 1, height: 44, borderRadius: 14, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+    actionText: { color: colors.text, fontSize: fs(14), fontWeight: '600' },
+    pending: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingStart: 14, paddingEnd: 4, minHeight: 60, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#B88CFF' },
+    pendingTitle: { color: colors.text, fontSize: fs(15), fontWeight: '600', textAlign: start },
+    cancel: { height: 44, paddingHorizontal: 12, justifyContent: 'center' },
+    empty: { alignItems: 'center', gap: 12, padding: 22, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#B88CFF' },
+    emptyText: { color: colors.textDim, fontSize: fs(15), textAlign: 'center' },
+    emptyBtn: { height: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.accent, justifyContent: 'center' },
+    emptyBtnText: { color: '#FFFFFF', fontSize: fs(15), fontWeight: '600' },
+  };
+});

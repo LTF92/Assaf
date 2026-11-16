@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 OWNER_CHAT_ID = "owner"
 ROLES = ("owner", "guest")
+SCOPES = ("chat", "read", "full")
 MAX_MESSAGES_PER_CHAT = 600
 MAX_TEXT_CHARS = 200_000
 
@@ -72,9 +73,23 @@ class Device:
     created_at: float = field(default_factory=_now)
     last_seen: Optional[float] = None
     push_token: Optional[str] = None
+    # Guest limits set by the owner: "chat" (talk only), "read" (talk + read), "full" (all tools,
+    # sensitive steps still need the owner's approval); an optional topic; an optional expiry.
+    scope: Optional[str] = None
+    topic: Optional[str] = None
+    expires_at: Optional[float] = None
+    # What this phone wants pushed (see adapter.NOTIFY_DEFAULTS).
+    notify: Optional[dict[str, Any]] = None
 
     def public(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "role": self.role, "chat_id": self.chat_id}
+        out = {"id": self.id, "name": self.name, "role": self.role, "chat_id": self.chat_id}
+        if not self.is_owner:
+            out.update(scope=self.scope or "full", topic=self.topic or "", expires_at=self.expires_at)
+        return out
+
+    @property
+    def expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at <= _now()
 
     @property
     def is_owner(self) -> bool:
@@ -129,15 +144,20 @@ class DeviceRegistry:
                 self._mtime = None
 
     # -- api
-    def pair(self, name: str, role: str = "owner") -> tuple[Device, str]:
+    def pair(self, name: str, role: str = "owner", *, scope: Optional[str] = None, topic: Optional[str] = None,
+             expires_at: Optional[float] = None) -> tuple[Device, str]:
         """Create a device and return ``(device, token)``. The token is shown once and never stored."""
         if role not in ROLES:
             raise ValueError(f"role must be one of {ROLES}")
+        if scope is not None and scope not in SCOPES:
+            raise ValueError(f"scope must be one of {SCOPES}")
         name = (name or "").strip()[:60] or ("My phone" if role == "owner" else "Guest")
         token = secrets.token_urlsafe(32)
         dev_id = uuid.uuid4().hex[:12]
         chat_id = OWNER_CHAT_ID if role == "owner" else f"guest-{dev_id}"
         dev = Device(id=dev_id, name=name, role=role, chat_id=chat_id, token_hash=_hash_token(token))
+        if role == "guest":
+            dev.scope, dev.topic, dev.expires_at = scope or "full", (topic or "").strip()[:120] or None, expires_at
         with self._lock:
             self._reload()
             self._devices[dev.id] = dev
@@ -152,7 +172,7 @@ class DeviceRegistry:
             self._reload()
             for dev in self._devices.values():
                 if hmac.compare_digest(dev.token_hash, wanted):
-                    return dev
+                    return None if dev.expired else dev
         return None
 
     def get(self, device_id: str) -> Optional[Device]:
@@ -180,7 +200,7 @@ class DeviceRegistry:
             if dev is None:
                 return
             for key, value in fields.items():
-                if key in ("last_seen", "push_token", "name"):
+                if key in ("last_seen", "push_token", "name", "scope", "topic", "expires_at", "notify"):
                     setattr(dev, key, value)
             self._save()
 

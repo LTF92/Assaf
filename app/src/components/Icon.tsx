@@ -7,7 +7,8 @@ import { isRTL } from '../lib/i18n';
 export type IconName =
   | 'back' | 'forward' | 'close' | 'plus' | 'send' | 'stop' | 'settings' | 'inbox' | 'laptop' | 'lock' | 'chat'
   | 'shield' | 'shieldCheck' | 'qr' | 'clipboard' | 'flash' | 'wrench' | 'check' | 'chevDown' | 'chevUp' | 'compose'
-  | 'reply' | 'clock' | 'calendar' | 'bell' | 'image' | 'people' | 'copy' | 'trash' | 'alert';
+  | 'reply' | 'clock' | 'calendar' | 'bell' | 'image' | 'people' | 'copy' | 'trash' | 'alert'
+  | 'play' | 'info' | 'share' | 'x';
 
 export function Icon({ name, size = 22, color, strokeWidth = 1.8, fill }: { name: IconName; size?: number; color: string; strokeWidth?: number; fill?: string }) {
   const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
@@ -45,6 +46,10 @@ export function Icon({ name, size = 22, color, strokeWidth = 1.8, fill }: { name
     case 'people': body = <><Circle {...p} cx={9} cy={9} r={3.2} /><Path {...p} d="M3.5 19a5.5 5.5 0 0 1 11 0" /><Path {...p} d="M16 6.2a3 3 0 0 1 0 5.6" /><Path {...p} d="M17.5 14.2A5 5 0 0 1 20.5 19" /></>; break;
     case 'copy': body = <><Rect {...p} x={8} y={8} width={11} height={12} rx={2} /><Path {...p} d="M5 15V6a2 2 0 0 1 2-2h8" /></>; break;
     case 'trash': body = <><Path {...p} d="M4 7h16" /><Path {...p} d="M9 7V4h6v3" /><Path {...p} d="M6 7l1 13h10l1-13" /></>; break;
+    case 'play': body = <Path {...p} d="M8 5.5v13l11-6.5-11-6.5z" />; break;
+    case 'info': body = <><Circle {...p} cx={12} cy={12} r={8.5} /><Path {...p} d="M12 11v5" /><Path {...p} d="M12 8v.01" /></>; break;
+    case 'share': body = <><Path {...p} d="M12 15V4" /><Path {...p} d="M7.5 8L12 3.5 16.5 8" /><Path {...p} d="M6 12v7h12v-7" /></>; break;
+    case 'x': body = <><Path {...p} d="M6 6l12 12" /><Path {...p} d="M18 6L6 18" /></>; break;
     case 'alert': body = <><Path {...p} d="M12 3L2 20h20L12 3z" /><Path {...p} d="M12 10v4" /><Path {...p} d="M12 17v.01" /></>; break;
   }
   return <Svg width={size} height={size} viewBox="0 0 24 24">{body}</Svg>;

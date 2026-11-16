@@ -52,6 +52,15 @@ function MessageItemImpl({ m, baseUrl, headers, onRetry }: Props) {
     );
   }
 
+  // Notes the bridge posts itself ("⏳ waiting for the owner's approval") sit centred as a pill.
+  if (m.role === 'system' && m.kind === 'text') {
+    return (
+      <View style={s.noteRow}>
+        <Text style={s.note}>{m.text}</Text>
+      </View>
+    );
+  }
+
   if (m.kind === 'media' && m.media) {
     return (
       <View style={s.assistant}>
@@ -87,6 +96,8 @@ function MessageItemImpl({ m, baseUrl, headers, onRetry }: Props) {
 export const MessageItem = memo(MessageItemImpl, (a, b) => a.m === b.m && a.baseUrl === b.baseUrl);
 
 const useStyles = makeStyles((colors, fs) => ({
+  noteRow: { alignItems: 'center', paddingHorizontal: 24, paddingVertical: 6 },
+  note: { color: colors.textDim, fontSize: fs(13), lineHeight: fs(19), textAlign: 'center', backgroundColor: colors.surface, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, overflow: 'hidden' },
   userRow: { alignItems: 'flex-end', paddingHorizontal: 16, marginVertical: 8 },
   userBubble: { maxWidth: '80%', backgroundColor: colors.userBubble, borderRadius: 22, ...(isRTL ? { borderBottomLeftRadius: 6 } : { borderBottomRightRadius: 6 }), paddingHorizontal: 16, paddingVertical: 12 },
   userText: { color: colors.userText, fontSize: fs(16), lineHeight: fs(24) },

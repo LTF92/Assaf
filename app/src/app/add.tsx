@@ -30,6 +30,11 @@ export default function AddConnection() {
       setError(t.invalidLink);
       return;
     }
+    if (payload.role === 'guest') {
+      busy.current = true;
+      router.replace({ pathname: '/join', params: { link: raw.trim() } });
+      return;
+    }
     busy.current = true;
     try {
       const conn = await add(payload);

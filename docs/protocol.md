@@ -76,6 +76,34 @@ Every create or edit bumps the chat's `rev`, so a reconnecting phone sends `sinc
 and receives exactly the messages that were created **or changed** while it was away (streamed
 answers are edits of one message).
 
+## Scheduled jobs, notifications and guests (owner tools)
+
+All requests carry a `ref`; the reply echoes it.
+
+| Frame | Who | Reply |
+| --- | --- | --- |
+| `{"type":"jobs","op":"list"}` | owner | `{"type":"jobs","jobs":[Job…]}` |
+| `{"type":"jobs","op":"create","name","prompt","schedule","show"}` | owner | `{"type":"jobs","job":Job}` |
+| `{"type":"jobs","op":"update","id", …any of name/prompt/schedule/show}` | owner | `{"type":"jobs","job":Job}` |
+| `{"type":"jobs","op":"pause"\|"resume"\|"run","id"}` | owner | `{"type":"jobs","job":Job}` |
+| `{"type":"jobs","op":"delete","id"}` | owner | `{"type":"jobs","deleted":id}` |
+| `{"type":"notify","approval","scheduled","errors","replies","muted","quiet":{"on","start","end"},"tz"}` | any | none (stored per device) |
+| `{"type":"invite","name","scope","topic","expires_in"}` | owner | `{"type":"invite","token","device","profile"}` |
+| `{"type":"update_guest","device_id","scope?","topic?","expires_in?"}` | owner | `{"type":"devices","devices":[…]}` |
+
+`schedule` is `{"freq":"daily"|"weekly"|"monthly","time":"HH:MM","days":[0=Sun…6],"dom":1…28}` and maps to a
+5-field cron expression. A `Job` adds `schedule` (null when the cron expression is something the app can't edit;
+`schedule_display` then shows it), `enabled`, `state`, `next_run_at`, `last_run_at`, `last_status`, `last_error`
+and `show` (`inbox` = main channel and chat, `chat` = chat only, `silent` = Hermes `deliver: local`).
+Failures always reach the main channel. Errors come back as `{"type":"error","code":…}` with `forbidden`,
+`jobs_unavailable`, `not_found`, `bad_time`, `no_days`, `bad_day`, `empty_prompt` or `bad_schedule`.
+
+Guest devices carry `scope` (`chat` = no tools, `read` = read-only tools, `full`), an optional `topic` and
+`expires_at` (unix seconds or null). An expired guest is refused at login and disconnected on its next frame.
+Approvals raised in a guest chat go to the owner chat with `card.guest = {id, name}`; the guest sees a
+`role: "system"` note instead. `profile` in `welcome` includes `owner` (the Mac user's name), and a guest's
+`device` includes its limits. Guest pairing links add `scope`, `topic`, `exp` and `from`.
+
 ## HTTP
 
 * `GET /health` → `{"ok": true}`

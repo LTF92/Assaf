@@ -54,7 +54,7 @@ function ApprovalSheet({ m, agentName, visible, onClose, onAction }: Props & { v
         <View style={s.sheetHead}>
           <View style={s.sheetIcon}><Icon name="shield" size={24} color={colors.link} /></View>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={s.sheetTitle}>{t.approvalAsks(agentName || '')}</Text>
+            <Text style={s.sheetTitle}>{card.guest ? t.guestAsks(card.guest.name, agentName || '') : t.approvalAsks(agentName || '')}</Text>
             <Text style={s.sheetSub}>{t.approvalSub}</Text>
           </View>
         </View>
@@ -117,7 +117,7 @@ function CardViewImpl({ m, agentName, onAction, onOther }: Props) {
       <>
         <PressScale style={s.reviewRow} onPress={() => setSheet(true)} haptic>
           <Icon name="shield" size={20} color={colors.link} />
-          <Text style={s.reviewText}>{t.needsApprovalRow}</Text>
+          <Text style={s.reviewText}>{m.card?.guest ? t.guestAsks(m.card.guest.name, agentName || '') : t.needsApprovalRow}</Text>
           <Text style={s.reviewLink}>{t.review}</Text>
         </PressScale>
         <ApprovalSheet m={m} agentName={agentName} visible={sheet} onClose={() => setSheet(false)} onAction={onAction} />

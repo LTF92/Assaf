@@ -19,6 +19,8 @@ export interface Card {
   actions: CardAction[];
   resolution?: { label: string; value: string | null; by?: string } | null;
   awaiting_text?: boolean;
+  /** Raised in a guest's chat: who is asking. */
+  guest?: { id: string; name: string } | null;
 }
 
 export interface ToolInfo {
@@ -72,6 +74,10 @@ export interface Connection {
   color?: string;
   /** How the agent looks on this phone (set in the customise screen). */
   look?: AgentLook;
+  /** No push notifications from this agent. */
+  muted?: boolean;
+  /** Guest only: the limits and sharer from the invite, shown until the bridge reports them live. */
+  invite?: { scope?: 'chat' | 'read' | 'full'; topic?: string; exp?: number | null; from?: string };
 }
 
 export interface AgentLook {
