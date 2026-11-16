@@ -9,7 +9,7 @@ import { Appear, PressScale } from '../components/motion';
 import { isRTL, t } from '../lib/i18n';
 import { useAllChats, useInbox } from '../lib/inbox';
 import { preview } from '../lib/rows';
-import { agentName, portOf, useConnections } from '../lib/store';
+import { agentName, useConnections } from '../lib/store';
 import { timeLabel } from '../lib/time';
 import { colors, makeStyles, mono } from '../lib/theme';
 import type { ClientSnapshot } from '../lib/client';
@@ -51,7 +51,6 @@ function AgentRow({ conn, snap, index, first }: { conn: Connection; snap?: Clien
             <Text style={[s.preview, line.busy && !line.waiting && { color: colors.link }]} numberOfLines={1}>{line.text}</Text>
             {line.waiting && <View style={s.dot} accessibilityLabel={t.approvalNeeded} />}
           </View>
-          <Text style={s.port}>{portOf(conn)}</Text>
         </View>
       </PressScale>
     </Appear>
