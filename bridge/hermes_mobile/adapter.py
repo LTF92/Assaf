@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import functools
 import json
 import logging
 import threading
@@ -38,6 +39,22 @@ from gateway.platforms._shared import coerce_port, get_scoped_secret
 
 from .core import PRIVATE_KEY, ChatStore, Device, DeviceRegistry, looks_like_progress
 from .server import MobileServer
+
+# A reply arriving this long after the user's last message in the chat is treated as unprompted.
+UNPROMPTED_AFTER_S = 15 * 60
+
+
+@functools.lru_cache(maxsize=1)
+def _host_name() -> str:
+    """The machine's friendly name ("MacBook Pro"), shown on the app's home screen."""
+    import platform
+    import subprocess
+    if platform.system() == "Darwin":
+        with contextlib.suppress(Exception):
+            name = subprocess.run(["scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2).stdout.strip()
+            if name:
+                return name
+    return platform.node().split(".")[0]
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +128,7 @@ class HermesMobileAdapter(BasePlatformAdapter):
         self.store = ChatStore(self._dir)
         self.server = MobileServer(self.registry, self.store, self, host=self.host, port=self.port)
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._last_user_at: dict[str, float] = {}
         self._tool_started: dict[str, float] = {}
 
     # ── lifecycle
@@ -140,7 +158,7 @@ class HermesMobileAdapter(BasePlatformAdapter):
 
     # ── BridgeHandlers (called by the server)
     def profile_info(self) -> dict[str, Any]:
-        return {"name": self._profile, "label": self.label or self._profile}
+        return {"name": self._profile, "label": self.label or self._profile, "host": _host_name()}
 
     @staticmethod
     def _user_id(device: Device) -> str:
@@ -151,6 +169,7 @@ class HermesMobileAdapter(BasePlatformAdapter):
                       message: dict[str, Any]) -> None:
         if not self._message_handler:
             raise RuntimeError("gateway handler not attached yet")
+        self._last_user_at[device.chat_id] = time.time()
         media_urls, media_types = [], []
         msg_type = MessageType.TEXT
         for att in attachments:
@@ -208,14 +227,26 @@ class HermesMobileAdapter(BasePlatformAdapter):
     async def on_presence(self, device: Device, chat_id: str) -> None:
         return None
 
+    def _is_unprompted(self, chat_id: str, metadata: Optional[dict[str, Any]]) -> bool:
+        """True for messages the agent sends on its own (cron jobs, reminders), which the app
+        gathers in its main channel. Hermes marks cron deliveries in the metadata; anything
+        sent long after the user last wrote in this chat counts too."""
+        meta = metadata or {}
+        if any(k for k in meta if "cron" in k.lower() or "job" in k.lower() or "schedul" in k.lower()):
+            return True
+        last = self._last_user_at.get(chat_id)
+        return last is None or time.time() - last > UNPROMPTED_AFTER_S
+
     # ── outbound text
     async def send(self, chat_id: str, content: str, reply_to: Optional[str] = None,
                    metadata: Optional[dict[str, Any]] = None) -> SendResult:
         content = content or ""
         kind = "tool" if looks_like_progress(content) else "text"
         interim = bool((metadata or {}).get("_interim_send"))
+        extra = {"origin": "scheduled"} if kind == "text" and not interim and self._is_unprompted(chat_id, metadata) else {}
         msg = self.store.upsert(chat_id, role="assistant", kind=kind, text=content, reply_to=reply_to,
-                                interim=interim, tool={"name": "progress", "status": "info"} if kind == "tool" else None)
+                                interim=interim, tool={"name": "progress", "status": "info"} if kind == "tool" else None,
+                                **extra)
         await self.server.publish_message(msg)
         if kind == "text" and not interim:
             self._schedule_push(chat_id, self.profile_info()["label"], content)

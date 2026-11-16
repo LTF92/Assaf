@@ -5,7 +5,7 @@
 import { haptic as hapticFx } from '../lib/haptics';
 import { current } from '../lib/settings';
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 const native = true;
@@ -40,6 +40,21 @@ export function Appear({
   return <Animated.View style={[style, { opacity: v, transform }]}>{children}</Animated.View>;
 }
 
+const OUTER_KEYS = new Set([
+  'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf', 'width', 'minWidth', 'maxWidth',
+  'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'marginStart', 'marginEnd', 'marginHorizontal', 'marginVertical',
+  'position', 'top', 'bottom', 'left', 'right', 'start', 'end', 'zIndex',
+]);
+function splitLayout(style: StyleProp<ViewStyle>) {
+  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
+  const outer: Record<string, unknown> = {};
+  const inner: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(flat)) (OUTER_KEYS.has(k) ? outer : inner)[k] = val;
+  // The inner view fills the target when the target was given a size by flex or width.
+  if (outer.flex != null || outer.flexGrow != null || outer.width != null || outer.alignSelf === 'stretch') inner.flexGrow = 1;
+  return { outer: outer as ViewStyle, inner: inner as ViewStyle };
+}
+
 /** Pressable that shrinks a little under the finger, with an optional light haptic tap. */
 export function PressScale({
   children,
@@ -50,10 +65,13 @@ export function PressScale({
   ...rest
 }: PressableProps & { style?: StyleProp<ViewStyle>; to?: number; haptic?: boolean; children: React.ReactNode }) {
   const v = useRef(new Animated.Value(1)).current;
+  // Sizing and placement belong to the touch target; the look scales inside it.
+  const { outer, inner } = splitLayout(style);
   const go = (toValue: number) => current.animations && Animated.spring(v, { toValue, damping: 15, stiffness: 320, useNativeDriver: native }).start();
   return (
     <Pressable
       {...rest}
+      style={outer}
       onPressIn={(e) => { go(to); rest.onPressIn?.(e); }}
       onPressOut={(e) => { go(1); rest.onPressOut?.(e); }}
       onPress={(e) => {
@@ -61,7 +79,7 @@ export function PressScale({
         onPress?.(e);
       }}
     >
-      <Animated.View style={[style, { transform: [{ scale: v }] }]}>{children}</Animated.View>
+      <Animated.View style={[inner, { transform: [{ scale: v }] }]}>{children}</Animated.View>
     </Pressable>
   );
 }

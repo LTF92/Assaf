@@ -10,6 +10,9 @@ It prints a pairing QR/link. In the app, try:
   * "ask"            → a multiple-choice question card
   * "file"           → a file attachment
   * Arabic text      → a mixed Arabic/English answer (to check text direction)
+  * "cron"           → a scheduled report, as a cron job delivers it (lands in the main channel)
+
+``--seed`` starts the chat with a scheduled report and a pending approval.
 """
 
 from __future__ import annotations
@@ -64,14 +67,32 @@ Steps to clean it:
 تبيني أنظف الكاش؟"""
 
 
+REPORT = """تقرير الصباح
+السيرفر شغال، القرص مستخدم **42%**، وما فيه خدمات واقفة.
+
+- النسخ الاحتياطي: تم 3:00 ص
+- التحديثات: لا شيء جديد"""
+
+APPROVAL = {"type": "approval", "state": "pending", "command": "rm -rf ./build && make release",
+            "description": "recursive delete",
+            "actions": [{"label": "Allow once", "value": "once", "style": "primary"},
+                        {"label": "Allow for session", "value": "session", "style": ""},
+                        {"label": "Deny", "value": "deny", "style": "danger"}]}
+
+
 class FakeHermes:
-    def __init__(self, workdir: Path, delay: float = 0.4):
+    def __init__(self, workdir: Path, delay: float = 0.4, profile: str = "demo", label: str = "Demo Agent"):
         self.server: MobileServer | None = None
         self.workdir = workdir
         self.delay = delay
+        self.profile, self.label = profile, label
 
     def profile_info(self):
-        return {"name": "demo", "label": "Demo Agent"}
+        return {"name": self.profile, "label": self.label, "host": "MacBook Pro"}
+
+    async def seed(self, chat_id: str):
+        await self._say(chat_id, text=REPORT, origin="scheduled")
+        await self._say(chat_id, kind="card", text="Run a dangerous command?", _private={"kind": "approval"}, card=APPROVAL)
 
     async def _say(self, chat_id: str, **fields):
         msg = self.server.store.upsert(chat_id, role="assistant", **fields)
@@ -87,11 +108,10 @@ class FakeHermes:
         await asyncio.sleep(self.delay)
         if text == "approve":
             await self._say(chat_id, kind="card", text="Run a dangerous command?", _private={"kind": "approval"},
-                            card={"type": "approval", "state": "pending", "command": "rm -rf ./build && make release",
-                                  "description": "recursive delete",
-                                  "actions": [{"label": "Allow once", "value": "once", "style": "primary"},
-                                              {"label": "Allow for session", "value": "session", "style": ""},
-                                              {"label": "Deny", "value": "deny", "style": "danger"}]})
+                            card=APPROVAL)
+            return await s.publish_typing(chat_id, False)
+        if text == "cron":
+            await self._say(chat_id, text=REPORT, origin="scheduled")
             return await s.publish_typing(chat_id, False)
         if text == "ask":
             await self._say(chat_id, kind="card", text="Which environment should I deploy to?", _private={"kind": "clarify"},
@@ -147,18 +167,23 @@ async def main() -> None:
     ap.add_argument("--dir", default=None, help="state directory (default: a temp dir)")
     ap.add_argument("--token-file", help="write a fresh owner token here (for tests)")
     ap.add_argument("--delay", type=float, default=0.4)
+    ap.add_argument("--profile", default="demo")
+    ap.add_argument("--label", default="Demo Agent")
+    ap.add_argument("--seed", action="store_true", help="start with a scheduled report and a pending approval")
     args = ap.parse_args()
     workdir = Path(args.dir or tempfile.mkdtemp(prefix="hermes-mobile-dev-"))
     reg, store = DeviceRegistry(workdir / "devices.json"), ChatStore(workdir)
-    fake = FakeHermes(workdir, args.delay)
+    fake = FakeHermes(workdir, args.delay, args.profile, args.label)
     server = MobileServer(reg, store, fake, host=args.host, port=args.port)
     fake.server = server
     await server.start()
-    _, token = reg.pair("Dev phone")
+    device, token = reg.pair("Dev phone")
+    if args.seed:
+        await fake.seed(device.chat_id)
     if args.token_file:
         Path(args.token_file).write_text(token)
     else:
-        link = pairing_link(f"ws://{args.public_host or detect_host()}:{server.port}", token, "demo", "Demo Agent", "owner")
+        link = pairing_link(f"ws://{args.public_host or detect_host()}:{server.port}", token, args.profile, args.label, "owner")
         print_qr(link)
         print(link, flush=True)
     print(f"listening on {args.host}:{server.port}", flush=True)

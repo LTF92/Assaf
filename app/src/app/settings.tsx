@@ -1,81 +1,75 @@
 import Constants from 'expo-constants';
+import { router, Stack } from 'expo-router';
 import React from 'react';
-import { Alert, Platform, ScrollView, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { authenticate, canLock } from '../components/AppLock';
-import { Markdown } from '../components/Markdown';
-import { Appear, Gradient, PressScale } from '../components/motion';
+import { Icon } from '../components/Icon';
+import { PressScale } from '../components/motion';
+import { Segmented } from '../components/Segmented';
 import { isRTL, t } from '../lib/i18n';
-import { textDir, useSettings, type Settings } from '../lib/settings';
-import { ACCENTS, colors, makeStyles, radius, type AccentName } from '../lib/theme';
+import { useAllChats } from '../lib/inbox';
+import { useSettings, type Settings } from '../lib/settings';
+import { useConnections } from '../lib/store';
+import { colors, makeStyles } from '../lib/theme';
 
-type Opt<V> = { value: V; label: string };
+function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <Switch
+      value={value}
+      onValueChange={onChange}
+      accessibilityLabel={label}
+      trackColor={{ true: colors.accent, false: colors.switchOff }}
+      thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
+      {...(Platform.OS === 'web' ? ({ activeThumbColor: '#FFFFFF' } as object) : null)}
+      ios_backgroundColor={colors.switchOff}
+    />
+  );
+}
 
-/** A row of pill buttons; the chosen one is filled with the accent colour. */
-function Choice<V extends string | number>({ options, value, onChange }: { options: Opt<V>[]; value: V; onChange: (v: V) => void }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const s = useStyles();
   return (
-    <View style={s.choices}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <PressScale key={String(o.value)} haptic to={0.94} style={[s.choice, on && s.choiceOn]} onPress={() => onChange(o.value)}>
-            <Text style={[s.choiceText, on && s.choiceTextOn]}>{o.label}</Text>
-          </PressScale>
-        );
-      })}
+    <View style={{ gap: 8 }}>
+      <Text style={s.h2}>{title}</Text>
+      {children}
     </View>
   );
 }
 
-function Row({ label, hint, children, column }: { label: string; hint?: string; children: React.ReactNode; column?: boolean }) {
+function Group({ children }: { children: React.ReactNode }) {
   const s = useStyles();
+  const items = React.Children.toArray(children).filter(Boolean);
   return (
-    <View style={[s.row, column && s.rowColumn]}>
-      <View style={{ flex: column ? undefined : 1, gap: 2 }}>
+    <View style={s.group}>
+      {items.map((c, i) => (
+        <View key={i} style={i > 0 && s.divider}>{c}</View>
+      ))}
+    </View>
+  );
+}
+
+function Row({ label, hint, children, onPress }: { label: string; hint?: string; children?: React.ReactNode; onPress?: () => void }) {
+  const s = useStyles();
+  const body = (
+    <View style={[s.row, hint ? { minHeight: 62 } : null]}>
+      <View style={{ flex: 1, gap: 1 }}>
         <Text style={s.label}>{label}</Text>
         {hint ? <Text style={s.hint}>{hint}</Text> : null}
       </View>
       {children}
     </View>
   );
+  return onPress ? <Pressable onPress={onPress} accessibilityRole="button">{body}</Pressable> : body;
 }
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <Switch
-      value={value}
-      onValueChange={onChange}
-      trackColor={{ true: colors.accent, false: colors.surface3 }}
-      thumbColor={Platform.OS === 'android' ? (value ? colors.accentText : colors.textDim) : undefined}
-      ios_backgroundColor={colors.surface3}
-    />
-  );
-}
-
-function Section({ title, children, index }: { title: string; children: React.ReactNode; index: number }) {
+function Value({ text }: { text: string }) {
   const s = useStyles();
   return (
-    <Appear delay={index * 50} from={14}>
-      <Text style={s.sectionTitle}>{title}</Text>
-      <View style={s.section}>{children}</View>
-    </Appear>
-  );
-}
-
-/** Live sample of the chat with the current theme, size and direction. */
-function Preview() {
-  const s = useStyles();
-  const dir = textDir(t.previewUser);
-  return (
-    <View style={s.preview}>
-      <View style={s.previewUserRow}>
-        <View style={s.previewBubble}>
-          <Text style={[s.previewUserText, { writingDirection: dir }]}>{t.previewUser}</Text>
-        </View>
-      </View>
-      <Markdown text={t.previewAgent} />
+    <View style={s.valueWrap}>
+      <Text style={s.value}>{text}</Text>
+      <Icon name="forward" size={16} color={colors.textDim} strokeWidth={2} />
     </View>
   );
 }
@@ -84,6 +78,8 @@ export default function SettingsScreen() {
   const { settings, set, reset } = useSettings();
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const chats = useAllChats();
+  const { remove } = useConnections();
   const up = <K extends keyof Settings>(k: K) => (v: Settings[K]) => set(k, v);
 
   const toggleLock = async (on: boolean) => {
@@ -92,176 +88,172 @@ export default function SettingsScreen() {
     if (await authenticate()) set('appLock', true);
   };
 
-  const version = Constants.expoConfig?.version ?? '';
+  const online = chats.filter((c) => c.snap?.status === 'online').length;
+  const host = chats.find((c) => c.snap?.hostName)?.snap?.hostName || t.connection;
+  const theme = settings.theme === 'black' ? 'dark' : settings.theme;
+
+  const unpairAll = () =>
+    Alert.alert(t.unpairMac, t.unpairConfirm, [
+      { text: t.cancel, style: 'cancel' },
+      {
+        text: t.unpairMac, style: 'destructive',
+        onPress: async () => {
+          for (const c of chats) await remove(c.conn.id);
+          router.dismissTo('/');
+        },
+      },
+    ]);
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40, gap: 6, direction: isRTL ? 'rtl' : 'ltr' }}>
-      <Section title={t.preview} index={0}>
-        <Preview />
-      </Section>
+    <View style={s.screen}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScrollView contentContainerStyle={[s.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 }]}>
+        <View style={s.header}>
+          <PressScale style={s.back} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} accessibilityLabel={t.agents}>
+            <Icon name="back" size={22} color={colors.text} strokeWidth={2} />
+          </PressScale>
+          <Text style={s.h1} accessibilityRole="header">{t.appSettings}</Text>
+        </View>
 
-      <Section title={t.appearance} index={1}>
-        <Row label={t.theme} column>
-          <Choice
-            value={settings.theme}
+        <Section title={t.appearance}>
+          <Segmented
+            label={t.appearance}
+            value={theme}
             onChange={up('theme')}
-            options={[
-              { value: 'system', label: t.themeSystem },
-              { value: 'dark', label: t.themeDark },
-              { value: 'black', label: t.themeBlack },
-              { value: 'light', label: t.themeLight },
-            ]}
+            options={[{ value: 'system', label: t.themeAuto }, { value: 'light', label: t.themeLight }, { value: 'dark', label: t.themeDark }]}
           />
-        </Row>
-        <Row label={t.accentColor} column>
-          <View style={s.swatches}>
-            {(Object.keys(ACCENTS) as AccentName[]).map((name) => {
-              const on = settings.accent === name;
-              return (
-                <PressScale key={name} haptic to={0.88} onPress={() => set('accent', name)} style={[s.swatchRing, on && { borderColor: ACCENTS[name][0] }]}>
-                  <View style={s.swatch}>
-                    <Gradient colors={[ACCENTS[name][0], ACCENTS[name][1]]} radius={17} />
-                    {on ? <Text style={[s.check, { color: ACCENTS[name][2] }]}>✓</Text> : null}
-                  </View>
-                </PressScale>
-              );
-            })}
-          </View>
-        </Row>
-        <Row label={t.textSize} column>
-          <Choice
+          <Segmented
+            label={t.textSize}
             value={settings.fontScale}
             onChange={up('fontScale')}
-            options={[
-              { value: 0.9, label: t.sizeSmall },
-              { value: 1, label: t.sizeNormal },
-              { value: 1.12, label: t.sizeLarge },
-              { value: 1.25, label: t.sizeXL },
-            ]}
+            options={[{ value: 0.9, label: t.sizeSmall }, { value: 1, label: t.sizeNormal }, { value: 1.12, label: t.sizeLarge }, { value: 1.25, label: t.sizeXL }]}
           />
-        </Row>
-      </Section>
+        </Section>
 
-      <Section title={t.language} index={2}>
-        <Row label={t.language} column>
-          <Choice
+        <Section title={t.langDir}>
+          <Segmented
+            label={t.uiLanguage}
             value={settings.language}
             onChange={up('language')}
-            options={[
-              { value: 'system', label: t.langSystem },
-              { value: 'ar', label: 'العربية' },
-              { value: 'en', label: 'English' },
-            ]}
+            options={[{ value: 'system', label: t.langSystem }, { value: 'ar', label: 'العربية' }, { value: 'en', label: 'English' }]}
           />
-        </Row>
-        <Row label={t.textDirection} hint={settings.textDirection === 'auto' ? t.dirAutoHint : undefined} column>
-          <Choice
-            value={settings.textDirection}
-            onChange={up('textDirection')}
-            options={[
-              { value: 'auto', label: t.dirAuto },
-              { value: 'rtl', label: t.dirRtl },
-              { value: 'ltr', label: t.dirLtr },
-            ]}
-          />
-        </Row>
-      </Section>
+          <Group>
+            <Row label={t.autoDir} hint={t.autoDirHint}>
+              <Toggle
+                label={t.autoDir}
+                value={settings.textDirection === 'auto'}
+                onChange={(on) => set('textDirection', on ? 'auto' : isRTL ? 'rtl' : 'ltr')}
+              />
+            </Row>
+          </Group>
+        </Section>
 
-      <Section title={t.chat} index={3}>
-        <Row label={t.toolSteps} column>
-          <Choice
-            value={settings.toolSteps}
-            onChange={up('toolSteps')}
-            options={[
-              { value: 'collapsed', label: t.toolsCollapsed },
-              { value: 'expanded', label: t.toolsExpanded },
-              { value: 'hidden', label: t.toolsHidden },
-            ]}
-          />
-        </Row>
-        <Row label={t.timestamps}>
-          <Toggle value={settings.timestamps} onChange={up('timestamps')} />
-        </Row>
-        <Row label={t.sendOnEnter} hint={t.sendOnEnterHint}>
-          <Toggle value={settings.sendOnEnter} onChange={up('sendOnEnter')} />
-        </Row>
-      </Section>
+        <Section title={t.toolsApprovals}>
+          <Group>
+            <Row label={t.showTools}>
+              <Toggle label={t.showTools} value={settings.toolSteps !== 'hidden'} onChange={(on) => set('toolSteps', on ? 'collapsed' : 'hidden')} />
+            </Row>
+            <Row label={t.notifications} hint={t.notificationsHint}>
+              <Toggle label={t.notifications} value={settings.notifications} onChange={up('notifications')} />
+            </Row>
+            <Row label={t.timestamps}>
+              <Toggle label={t.timestamps} value={settings.timestamps} onChange={up('timestamps')} />
+            </Row>
+            <Row label={t.sendOnEnter} hint={t.sendOnEnterHint}>
+              <Toggle label={t.sendOnEnter} value={settings.sendOnEnter} onChange={up('sendOnEnter')} />
+            </Row>
+          </Group>
+        </Section>
 
-      <Section title={t.feel} index={4}>
-        <Row label={t.animations}>
-          <Toggle value={settings.animations} onChange={up('animations')} />
-        </Row>
-        <Row label={t.haptics}>
-          <Toggle value={settings.haptics} onChange={up('haptics')} />
-        </Row>
-      </Section>
+        <Section title={t.privacy}>
+          <Group>
+            <Row label={t.appLock} hint={t.appLockHint}>
+              <Toggle label={t.appLock} value={settings.appLock} onChange={toggleLock} />
+            </Row>
+            {settings.appLock && (
+              <View style={{ padding: 8 }}>
+                <Segmented
+                  label={t.lockAfter}
+                  value={settings.lockAfterMin}
+                  onChange={up('lockAfterMin')}
+                  options={[{ value: 0, label: t.lockNow }, { value: 1, label: t.lockMinutes(1) }, { value: 5, label: t.lockMinutes(5) }, { value: 15, label: t.lockMinutes(15) }]}
+                />
+              </View>
+            )}
+            <Row label={t.animations}>
+              <Toggle label={t.animations} value={settings.animations} onChange={up('animations')} />
+            </Row>
+            <Row label={t.haptics}>
+              <Toggle label={t.haptics} value={settings.haptics} onChange={up('haptics')} />
+            </Row>
+          </Group>
+        </Section>
 
-      <Section title={t.privacy} index={5}>
-        <Row label={t.appLock} hint={t.appLockHint}>
-          <Toggle value={settings.appLock} onChange={toggleLock} />
-        </Row>
-        {settings.appLock && (
-          <Row label={t.lockAfter} column>
-            <Choice
-              value={settings.lockAfterMin}
-              onChange={up('lockAfterMin')}
-              options={[
-                { value: 0, label: t.lockNow },
-                { value: 1, label: t.lockMinutes(1) },
-                { value: 5, label: t.lockMinutes(5) },
-                { value: 15, label: t.lockMinutes(15) },
-              ]}
-            />
-          </Row>
+        {chats.length > 0 && (
+          <Section title={t.connection}>
+            <Group>
+              <Row label={host}>
+                <View style={s.valueWrap}>
+                  <View style={[s.dot, { backgroundColor: online ? colors.okDot : colors.switchOff }]} />
+                  <Text style={[s.status, { color: online ? colors.ok : colors.textDim }]}>
+                    {online ? t.agentsOnline(online) : t.offline}
+                  </Text>
+                </View>
+              </Row>
+              <Row label={t.agentsPorts} onPress={() => router.dismissTo('/')}>
+                <Value text={t.agentsCount(chats.length)} />
+              </Row>
+              <Row label={t.addAgent} onPress={() => router.push('/add')}>
+                <Icon name="plus" size={20} color={colors.link} strokeWidth={2} />
+              </Row>
+            </Group>
+          </Section>
         )}
-        <Row label={t.notifications} hint={t.notificationsHint}>
-          <Toggle value={settings.notifications} onChange={up('notifications')} />
-        </Row>
-      </Section>
 
-      <Section title={t.about} index={6}>
-        <Row label={t.version}>
-          <Text style={s.value}>{version}</Text>
-        </Row>
-        <PressScale
-          style={s.reset}
-          onPress={() =>
-            Alert.alert(t.resetSettings, t.resetConfirm, [
-              { text: t.cancel, style: 'cancel' },
-              { text: t.resetSettings, style: 'destructive', onPress: reset },
-            ])
-          }
-        >
-          <Text style={s.resetText}>{t.resetSettings}</Text>
-        </PressScale>
-      </Section>
-    </ScrollView>
+        <Section title={t.about}>
+          <Group>
+            <Row label={t.version}><Text style={s.value}>{Constants.expoConfig?.version ?? ''}</Text></Row>
+            <Row
+              label={t.resetSettings}
+              onPress={() =>
+                Alert.alert(t.resetSettings, t.resetConfirm, [
+                  { text: t.cancel, style: 'cancel' },
+                  { text: t.resetSettings, style: 'destructive', onPress: reset },
+                ])
+              }
+            />
+          </Group>
+        </Section>
+
+        {chats.length > 0 && (
+          <Pressable style={s.danger} onPress={unpairAll} accessibilityRole="button">
+            <Text style={s.dangerText}>{t.unpairMac}</Text>
+          </Pressable>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
-const useStyles = makeStyles((colors, fs) => ({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  sectionTitle: { color: colors.textFaint, fontSize: fs(13), fontWeight: '700', letterSpacing: 0.4, marginTop: 14, marginBottom: 8, marginHorizontal: 6 },
-  section: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
-  rowColumn: { flexDirection: 'column', alignItems: 'stretch', gap: 10 },
-  label: { color: colors.text, fontSize: fs(16), fontWeight: '600' },
-  hint: { color: colors.textDim, fontSize: fs(13), lineHeight: fs(18) },
-  value: { color: colors.textDim, fontSize: fs(15) },
-  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  choice: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-  choiceOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  choiceText: { color: colors.text, fontSize: fs(14), fontWeight: '600' },
-  choiceTextOn: { color: colors.accentText },
-  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  swatchRing: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  swatch: { width: 34, height: 34, borderRadius: 17, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  check: { fontSize: fs(16), fontWeight: '900' },
-  preview: { padding: 14, gap: 8, backgroundColor: colors.bg, direction: 'ltr' },
-  previewUserRow: { alignItems: 'flex-end' },
-  previewBubble: { backgroundColor: colors.userBubble, borderRadius: radius.xl, borderBottomRightRadius: 8, paddingHorizontal: 15, paddingVertical: 10, maxWidth: '85%' },
-  previewUserText: { color: colors.userText, fontSize: fs(16), fontWeight: '500' },
-  reset: { paddingVertical: 14, alignItems: 'center' },
-  resetText: { color: colors.danger, fontSize: fs(15), fontWeight: '700' },
-}));
-
+const useStyles = makeStyles((colors, fs) => {
+  const start = isRTL ? 'right' : 'left';
+  return {
+    screen: { flex: 1, backgroundColor: colors.bg, direction: isRTL ? 'rtl' : 'ltr' },
+    content: { paddingHorizontal: 20, gap: 22 },
+    header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginStart: -10 },
+    back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    h1: { color: colors.text, fontSize: fs(28), fontWeight: '700' },
+    h2: { color: colors.textDim, fontSize: fs(13), fontWeight: '600', paddingHorizontal: 4, textAlign: start },
+    group: { borderRadius: 18, backgroundColor: colors.surface, overflow: 'hidden' },
+    divider: { borderTopWidth: 1, borderTopColor: colors.surface3 },
+    row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 54, paddingHorizontal: 16, paddingVertical: 8 },
+    label: { color: colors.text, fontSize: fs(16), textAlign: start },
+    hint: { color: colors.textDim, fontSize: fs(13), textAlign: start },
+    valueWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    value: { color: colors.textDim, fontSize: fs(15) },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    status: { fontSize: fs(14), fontWeight: '600' },
+    danger: { height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    dangerText: { color: colors.danger, fontSize: fs(16), fontWeight: '600' },
+  };
+});

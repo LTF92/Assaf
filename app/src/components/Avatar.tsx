@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 
-import { avatarPalette } from '../lib/theme';
-import { Gradient } from './motion';
+import { avatarInk, avatarPalette } from '../lib/theme';
+import type { AgentLook } from '../lib/types';
 
 function pick(seed: string) {
   let h = 0;
@@ -10,15 +10,20 @@ function pick(seed: string) {
   return avatarPalette[Math.abs(h) % avatarPalette.length];
 }
 
-/** Round two-tone badge with the profile's first letter. */
-export function Avatar({ label, seed, size = 52 }: { label: string; seed: string; size?: number }) {
-  const pair = pick(seed);
-  const letter = Array.from(label.trim())[0]?.toUpperCase() ?? '•';
+/** The agent's face: an emoji, a photo or its first letter on a flat brand-coloured squircle. */
+export function Avatar({ label, seed, size = 52, look }: { label: string; seed: string; size?: number; look?: AgentLook }) {
+  const bg = look?.bg ?? pick(seed);
+  const r = Math.round(size * 0.3);
+  if (look?.kind === 'photo' && look.photo) {
+    return <Image source={{ uri: look.photo }} style={{ width: size, height: size, borderRadius: r }} resizeMode="cover" />;
+  }
+  const emoji = look?.kind === 'emoji' && look.emoji;
+  const letter = Array.from((look?.name || label).trim())[0]?.toUpperCase() ?? '•';
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-      <Gradient colors={pair} radius={size / 2} />
-      <View style={[StyleSheet.absoluteFill, { borderRadius: size / 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' }]} />
-      <Text style={{ color: '#12100B', fontSize: size * 0.42, fontWeight: '800' }}>{letter}</Text>
+    <View style={{ width: size, height: size, borderRadius: r, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: avatarInk(bg), fontSize: size * (emoji ? 0.5 : 0.4), fontWeight: '700' }} allowFontScaling={false}>
+        {emoji || letter}
+      </Text>
     </View>
   );
 }

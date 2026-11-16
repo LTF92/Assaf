@@ -1,12 +1,12 @@
-# Hermes Mobile
+# همزة · Hamza (Hermes Mobile)
 
-تطبيق جوال خاص (iPhone و Android) تتواصل منه مع الـ Agents في [Hermes Agent](https://github.com/NousResearch/hermes-agent)، بدون واتساب أو تيليقرام أو أي خدمة طرف ثالث.
+«همزة» من «همزة وصل»: تطبيق جوال خاص (iPhone و Android) تتواصل منه مع الـ Agents في [Hermes Agent](https://github.com/NousResearch/hermes-agent)، بدون واتساب أو تيليقرام أو أي خدمة طرف ثالث.
 
 A private iOS + Android app for chatting with your Hermes Agent profiles. No WhatsApp, Telegram or other third-party service: the phone talks straight to your own Hermes.
 
-| Chats | Tool steps (collapsed → expanded) | Approval buttons |
-|---|---|---|
-| ![](docs/screenshots/chats.png) | ![](docs/screenshots/chat-tools.png) | ![](docs/screenshots/approval.png) |
+| Agents | Main channel (cron jobs + approvals) | Chat and tools | Approval | Agent look |
+|---|---|---|---|---|
+| ![](docs/screenshots/chats.png) | ![](docs/screenshots/inbox.png) | ![](docs/screenshots/chat-tools.png) | ![](docs/screenshots/approval.png) | ![](docs/screenshots/agent.png) |
 
 ## What you get
 

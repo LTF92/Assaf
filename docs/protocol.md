@@ -40,7 +40,7 @@ Only the SHA-256 of the token is stored on the server (`<profile home>/mobile/de
 
 | type | fields |
 |---|---|
-| `welcome` | `protocol`, `device {id,name,role,chat_id}`, `profile {name,label}`, `chat_id` |
+| `welcome` | `protocol`, `device {id,name,role,chat_id}`, `profile {name,label,host}`, `chat_id` |
 | `sync` | `messages[]`, `rev`, `truncated`, `reset` (sent right after `welcome`) |
 | `upsert` | `message` (create or replace by `id`) |
 | `typing` | `on` (the app hides it after ~8 s without a refresh) |
@@ -58,6 +58,7 @@ Only the SHA-256 of the token is stored on the server (`<profile home>/mobile/de
   "text": "markdown",
   "ts": 1731337200.1, "updated_ts": 1731337201.5,
   "deleted": false, "interim": false, "client_id": "…",          // user messages echo client_id
+  "origin": "scheduled",                                          // optional: sent unprompted (cron job, reminder)
   "tool":  {"name": "terminal", "status": "running|ok|error|info", "args": "…", "output": "…", "duration_ms": 812},
   "card":  {"type": "approval|clarify|confirm", "state": "pending|resolved|expired",
             "title": "…", "command": "…", "actions": [{"label": "Approve once", "value": "once", "style": "primary|danger|"}],
@@ -65,6 +66,11 @@ Only the SHA-256 of the token is stored on the server (`<profile home>/mobile/de
   "media": {"id": "…", "kind": "image|file|audio|video", "name": "…", "mime": "…", "size": 1234, "url": "…?"}
 }
 ```
+
+`origin: "scheduled"` marks an assistant message the agent sent on its own: a cron delivery
+(Hermes passes cron/job keys in the send metadata) or any reply that arrives more than 15 minutes
+after the user last wrote in that chat. The app gathers these, with pending approvals, in its
+main channel. `profile.host` is the machine's friendly name ("MacBook Pro").
 
 Every create or edit bumps the chat's `rev`, so a reconnecting phone sends `since=<last rev>`
 and receives exactly the messages that were created **or changed** while it was away (streamed

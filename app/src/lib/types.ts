@@ -55,6 +55,8 @@ export interface Message {
   tool?: ToolInfo | null;
   card?: Card | null;
   media?: Media | null;
+  /** 'scheduled' for cron deliveries and other messages the agent sent on its own. */
+  origin?: 'scheduled' | null;
   // client-only
   pending?: 'sending' | 'failed';
 }
@@ -68,6 +70,16 @@ export interface Connection {
   role: 'owner' | 'guest';
   createdAt: number;
   color?: string;
+  /** How the agent looks on this phone (set in the customise screen). */
+  look?: AgentLook;
+}
+
+export interface AgentLook {
+  kind: 'emoji' | 'photo' | 'letter';
+  emoji?: string;
+  photo?: string; // local file uri
+  bg?: string;
+  name?: string; // display name; falls back to the profile label
 }
 
 export type ConnStatus = 'connecting' | 'online' | 'offline' | 'unauthorized';

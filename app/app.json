@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Hermes Mobile",
+    "name": "همزة",
     "slug": "hermes-mobile",
     "scheme": "hermesmobile",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0B0D12",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FFFFFF",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ltf92.hermesmobile",
@@ -23,7 +23,7 @@
       "package": "com.ltf92.hermesmobile",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
-        "backgroundColor": "#0B0D12",
+        "backgroundColor": "#6A00FF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -48,20 +48,20 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Send photos to your agent.",
+          "photosPermission": "Send photos to your agent and pick agent avatars.",
           "cameraPermission": "Take photos to send to your agent."
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#F5B544"
+          "color": "#6A00FF"
         }
       ],
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Hermes uses Face ID to lock your chats."
+          "faceIDPermission": "Hamza uses Face ID to lock your chats."
         }
       ]
     ],

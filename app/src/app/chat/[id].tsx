@@ -1,21 +1,23 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '../../components/Avatar';
 import { CardView } from '../../components/CardView';
 import { Composer, type ComposerHandle } from '../../components/Composer';
+import { Icon } from '../../components/Icon';
 import { MessageItem } from '../../components/MessageItem';
 import { Appear, TypingDots } from '../../components/motion';
 import { StatusDot } from '../../components/StatusDot';
 import { ToolGroup } from '../../components/ToolGroup';
-import { t } from '../../lib/i18n';
+import { isRTL, t } from '../../lib/i18n';
+import { markRead, splitTitle } from '../../lib/inbox';
 import { httpBase } from '../../lib/pairing';
 import { buildRows, type Row } from '../../lib/rows';
 import { useSettings } from '../../lib/settings';
-import { useChat, useConnections } from '../../lib/store';
-import { colors, radius, makeStyles } from '../../lib/theme';
+import { agentName, portOf, useChat, useConnections } from '../../lib/store';
+import { colors, makeStyles, mono } from '../../lib/theme';
 
 function statusLabel(status: string) {
   return status === 'online' ? t.online : status === 'connecting' ? t.connecting : status === 'unauthorized' ? t.unauthorized : t.offline;
@@ -23,7 +25,7 @@ function statusLabel(status: string) {
 
 export default function ChatScreen() {
   const s = useStyles();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, reply: replyParam } = useLocalSearchParams<{ id: string; reply?: string }>();
   const { connections } = useConnections();
   const conn = connections.find((c) => c.id === id);
   const { client, snap } = useChat(id);
@@ -39,6 +41,38 @@ export default function ChatScreen() {
   const baseUrl = conn ? httpBase(conn) : '';
   const headers = useMemo(() => client?.mediaHeaders() ?? {}, [client]);
 
+  const name = conn ? agentName(conn, snap.profileLabel) : '';
+
+  // Replying to a scheduled report from the main channel: the report goes along as a quote.
+  const [replyId, setReplyId] = useState<string | undefined>(replyParam);
+  useEffect(() => setReplyId(replyParam), [replyParam]);
+  const replyMsg = replyId ? snap.messages.find((m) => m.id === replyId) : undefined;
+  const replyTitle = replyMsg ? splitTitle(replyMsg.text).title || replyMsg.text.replace(/\s+/g, ' ').slice(0, 80) : '';
+  useEffect(() => {
+    if (replyMsg) setTimeout(() => composer.current?.focus(), 350);
+  }, [replyMsg]);
+
+  // Opening the chat counts as reading what the agent sent on its own.
+  useEffect(() => {
+    if (!conn) return;
+    markRead(snap.messages.filter((m) => m.origin === 'scheduled').map((m) => `${conn.id}:${m.id}`));
+  }, [conn, snap.messages]);
+
+  const send = useCallback(
+    (text: string, atts: Parameters<NonNullable<typeof client>['send']>[1]) => {
+      if (!client) return;
+      if (replyMsg && text && !text.startsWith('/')) {
+        const quote = replyMsg.text.trim().slice(0, 500).split('\n').map((l) => `> ${l}`).join('\n');
+        client.send(`${quote}\n\n${text}`, atts);
+        setReplyId(undefined);
+        router.setParams({ reply: undefined });
+      } else client.send(text, atts);
+    },
+    [client, replyMsg],
+  );
+
+  const busy = snap.typing || snap.messages.some((m) => m.kind === 'tool' && m.tool?.status === 'running');
+
   const onAction = useCallback((messageId: string, value: string) => client?.act(messageId, value), [client]);
   const onRetry = useCallback((clientId: string) => client?.retrySend(clientId), [client]);
 
@@ -51,7 +85,7 @@ export default function ChatScreen() {
       const mine = item.type === 'message' && item.m.role === 'user';
       let body: React.ReactNode;
       if (item.type === 'tools') body = <ToolGroup items={item.items} />;
-      else if (item.type === 'card') body = <CardView m={item.m} onAction={onAction} onOther={() => composer.current?.focus()} />;
+      else if (item.type === 'card') body = <CardView m={item.m} agentName={name} onAction={onAction} onOther={() => composer.current?.focus()} />;
       else body = <MessageItem m={item.m} baseUrl={baseUrl} headers={headers} onRetry={onRetry} />;
       // The list is inverted (each cell is flipped), so a negative offset rises from below.
       return (
@@ -60,34 +94,40 @@ export default function ChatScreen() {
         </Appear>
       );
     },
-    [onAction, onRetry, baseUrl, headers, openedAt],
+    [onAction, onRetry, baseUrl, headers, openedAt, name],
   );
 
   if (!conn) return <View style={s.screen} />;
-  const title = snap.profileLabel || conn.label;
+  const title = name;
 
   return (
     <KeyboardAvoidingView
       style={s.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
+      keyboardVerticalOffset={0}
     >
-      <Stack.Screen
-        options={{
-          headerTitle: () => (
-            <Pressable onPress={() => router.push(`/connection/${conn.id}`)} style={s.titleWrap}>
-              <Avatar label={title} seed={conn.profile + conn.url} size={34} />
-              <View style={{ flexShrink: 1 }}>
-                <Text style={s.title} numberOfLines={1}>{title}</Text>
-                <View style={s.statusLine}>
-                  <StatusDot status={snap.status} size={7} />
-                  <Text style={[s.status, snap.typing && { color: colors.accent }]}>{snap.typing ? t.typing : statusLabel(snap.status)}</Text>
-                </View>
-              </View>
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={[s.header, { paddingTop: insets.top + 6 }]}>
+        <Pressable style={s.iconBtn} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} accessibilityLabel={t.agents} hitSlop={4}>
+          <Icon name="back" size={22} color={colors.text} strokeWidth={2} />
+        </Pressable>
+        <Pressable onPress={() => router.push(`/connection/${conn.id}`)} style={s.titleWrap} accessibilityLabel={t.customize}>
+          <Avatar label={name} seed={conn.profile + conn.url} look={conn.look} size={40} />
+          <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+            <Text style={s.title} numberOfLines={1}>{name}</Text>
+            <View style={s.statusLine}>
+              <StatusDot status={snap.status} size={7} />
+              <Text style={[s.status, snap.typing && { color: colors.link }]} numberOfLines={1}>
+                {snap.typing ? t.typing : statusLabel(snap.status)}
+              </Text>
+              <Text style={s.port}>· {portOf(conn)}</Text>
+            </View>
+          </View>
+        </Pressable>
+        <Pressable style={s.iconBtn} onPress={() => client?.send('/new', [])} accessibilityLabel={t.newChat} hitSlop={4}>
+          <Icon name="compose" size={22} color={colors.text} />
+        </Pressable>
+      </View>
       <FlatList
         inverted
         data={rows}
@@ -107,7 +147,7 @@ export default function ChatScreen() {
         ListEmptyComponent={
           <View style={s.empty}>
             <Appear scale from={-20} style={{ alignItems: 'center', gap: 12 }}>
-              <Avatar label={title} seed={conn.profile + conn.url} size={64} />
+              <Avatar label={title} seed={conn.profile + conn.url} look={conn.look} size={72} />
               <Text style={s.emptyName}>{title}</Text>
               <Text style={s.emptyText}>{t.emptyChat}</Text>
             </Appear>
@@ -115,21 +155,31 @@ export default function ChatScreen() {
         }
       />
       <View style={{ paddingBottom: insets.bottom }}>
-        <Composer ref={composer} disabled={snap.status === 'unauthorized'} onSend={(text, atts) => client?.send(text, atts)} />
+        <Composer
+          ref={composer}
+          disabled={snap.status === 'unauthorized'}
+          placeholder={t.writeTo(name)}
+          busy={busy}
+          reply={replyMsg ? { to: name, title: replyTitle, onCancel: () => { setReplyId(undefined); router.setParams({ reply: undefined }); } } : null}
+          onSend={send}
+        />
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const useStyles = makeStyles((colors, fs) => ({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  titleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, maxWidth: 260 },
-  title: { color: colors.text, fontSize: fs(16), fontWeight: '700' },
-  statusLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
+  screen: { flex: 1, backgroundColor: colors.bg, direction: isRTL ? 'rtl' : 'ltr' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  titleWrap: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { color: colors.text, fontSize: fs(17), fontWeight: '600', textAlign: isRTL ? 'right' : 'left' },
+  statusLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   status: { color: colors.textDim, fontSize: fs(12) },
+  port: { color: colors.textDim, fontSize: fs(12), fontFamily: mono },
   typingRow: { paddingHorizontal: 16, paddingVertical: 6, alignItems: 'flex-start' },
-  typingBubble: { backgroundColor: colors.surface, borderRadius: radius.lg, borderBottomLeftRadius: 6, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: colors.border },
+  typingBubble: { backgroundColor: colors.surface, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   empty: { padding: 40, paddingTop: 80, alignItems: 'center', transform: [{ scaleY: -1 }] },
   emptyName: { color: colors.text, fontSize: fs(18), fontWeight: '700' },
-  emptyText: { color: colors.textFaint },
+  emptyText: { color: colors.textDim },
 }));

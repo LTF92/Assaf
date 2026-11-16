@@ -27,6 +27,8 @@ export interface ClientSnapshot {
   typing: boolean;
   profileLabel: string;
   deviceName: string;
+  /** The machine the agent runs on ("MacBook Pro"). */
+  hostName: string;
   role: 'owner' | 'guest';
   hasOlder: boolean;
   lastError: string | null;
@@ -82,7 +84,7 @@ export class HermesClient {
     this.opts = opts;
     this.snapshot = {
       version: 0, status: 'offline', messages: [], typing: false, profileLabel: conn.label,
-      deviceName: '', role: conn.role, hasOlder: false, lastError: null,
+      deviceName: '', hostName: '', role: conn.role, hasOlder: false, lastError: null,
     };
   }
 
@@ -245,7 +247,7 @@ export class HermesClient {
         this.emit({
           status: 'online', lastError: null,
           profileLabel: msg.profile?.label || this.conn.label,
-          deviceName: msg.device?.name || '', role: msg.device?.role === 'guest' ? 'guest' : 'owner',
+          deviceName: msg.device?.name || '', hostName: msg.profile?.host || '', role: msg.device?.role === 'guest' ? 'guest' : 'owner',
         });
         this.startPing();
         this.sendRaw({ type: 'presence', active: this.active });

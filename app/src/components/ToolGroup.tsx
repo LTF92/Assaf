@@ -1,25 +1,34 @@
 import * as Clipboard from 'expo-clipboard';
 import React, { memo, useState } from 'react';
-import { ActivityIndicator, Animated, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { t } from '../lib/i18n';
+import { isRTL, t } from '../lib/i18n';
 import { colors, mono, radius, makeStyles } from '../lib/theme';
 import { current } from '../lib/settings';
 import type { Message } from '../lib/types';
-import { Appear, useToggle } from './motion';
+import { Icon } from './Icon';
+import { Appear, useLoop } from './motion';
 
 const smooth = () => current.animations && LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
 
-const ICONS: Record<string, string> = {
-  terminal: '⌨︎', execute_code: '⌨︎', web_search: '⌕', web_extract: '⌕', browser: '◍',
-  read_file: '▤', write_file: '✎', patch: '✎', search_files: '⌕', memory: '◈', delegate_task: '⇆',
-  progress: '•',
-};
+function StatusIcon({ status }: { status?: string }) {
+  if (status === 'running') return <Spinner />;
+  if (status === 'error') return <Icon name="alert" size={18} color={colors.danger} strokeWidth={2} />;
+  if (status === 'ok') return <Icon name="check" size={18} color={colors.ok} strokeWidth={2.2} />;
+  return <View style={{ width: 18, alignItems: 'center' }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.textDim }} /></View>;
+}
 
-function statusDot(status?: string) {
-  if (status === 'running') return <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.7 }] }} />;
-  const color = status === 'error' ? colors.danger : status === 'ok' ? colors.ok : colors.textFaint;
-  return <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />;
+/** A thin ring that turns while a tool runs. */
+function Spinner() {
+  const spin = useLoop(900);
+  return (
+    <Animated.View
+      style={{
+        width: 18, height: 18, borderRadius: 9, borderWidth: 2.5, borderColor: colors.track, borderTopColor: colors.accent,
+        transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+      }}
+    />
+  );
 }
 
 function ToolRow({ m }: { m: Message }) {
@@ -31,12 +40,14 @@ function ToolRow({ m }: { m: Message }) {
   const hasDetail = !!(tool?.args || tool?.output) || (tool?.name === 'progress' && m.text.length > 60);
   return (
     <View style={s.row}>
-      <Pressable onPress={() => { if (!hasDetail) return; smooth(); setOpen((v) => !v); }} style={s.rowHead} hitSlop={6}>
-        {statusDot(tool?.status)}
-        <Text style={s.icon}>{ICONS[tool?.name ?? ''] ?? '⚙︎'}</Text>
-        {name ? <Text style={s.toolName}>{name}</Text> : null}
-        <Text style={s.summary} numberOfLines={open ? undefined : 1}>{label !== name ? label : ''}</Text>
-        {tool?.duration_ms ? <Text style={s.duration}>{(tool.duration_ms / 1000).toFixed(1)}s</Text> : null}
+      <Pressable onPress={() => { if (!hasDetail) return; smooth(); setOpen((v) => !v); }} style={s.rowHead} hitSlop={4}>
+        <StatusIcon status={tool?.status} />
+        <View style={s.rowText}>
+          {name ? <Text style={s.toolName}>{name}</Text> : null}
+          {label !== name ? <Text style={s.summary} numberOfLines={open ? undefined : 1}>{label}</Text> : null}
+        </View>
+        {tool?.status === 'running' ? <Text style={s.duration}>{t.toolRunning}</Text>
+          : tool?.duration_ms ? <Text style={s.duration}>{(tool.duration_ms / 1000).toFixed(1)}s</Text> : null}
       </Pressable>
       {open && (
         <Appear from={6} style={s.detail}>
@@ -62,22 +73,18 @@ function Block({ title, body, error }: { title: string; body: string; error?: bo
   );
 }
 
-/** Consecutive tool calls collapsed into one line ("3 steps"); tap to see each command and its output. */
+/** Consecutive tool calls in one card ("Used 3 tools"); tap a tool to see its command and output. */
 function ToolGroupImpl({ items }: { items: Message[] }) {
   const s = useStyles();
-  const [open, setOpen] = useState(current.toolSteps === 'expanded');
-  const turn = useToggle(open);
   const running = items.some((m) => m.tool?.status === 'running');
-  const failed = items.some((m) => m.tool?.status === 'error');
-  const last = items[items.length - 1];
-  const lastLabel = last.text || last.tool?.name || '';
+  const [open, setOpen] = useState(current.toolSteps === 'expanded' || running);
   return (
     <View style={s.wrap}>
-      <Pressable style={s.header} onPress={() => { smooth(); setOpen((v) => !v); }} hitSlop={6}>
-        {running ? statusDot('running') : statusDot(failed ? 'error' : 'ok')}
-        <Text style={s.headerText}>{t.steps(items.length)}</Text>
-        {!open && <Text style={s.headerLast} numberOfLines={1}>{running ? lastLabel : ''}</Text>}
-        <Animated.Text style={[s.chev, { transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] }) }] }]}>▸</Animated.Text>
+      <Pressable style={s.header} onPress={() => { smooth(); setOpen((v) => !v); }} hitSlop={4}>
+        <Icon name="wrench" size={16} color={colors.link} strokeWidth={2} />
+        <Text style={s.headerText}>{t.usedTools(items.length)}</Text>
+        {!open && running ? <Spinner /> : null}
+        <Icon name={open ? 'chevUp' : 'chevDown'} size={16} color={colors.textDim} strokeWidth={2} />
       </Pressable>
       {open && items.map((m, i) => <Appear key={m.id} delay={i * 35} from={8}><ToolRow m={m} /></Appear>)}
     </View>
@@ -87,21 +94,18 @@ function ToolGroupImpl({ items }: { items: Message[] }) {
 export const ToolGroup = memo(ToolGroupImpl);
 
 const useStyles = makeStyles((colors, fs) => ({
-  wrap: { marginVertical: 4, marginHorizontal: 14, alignSelf: 'stretch', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9 },
-  headerText: { color: colors.textDim, fontSize: fs(13), fontWeight: '600' },
-  headerLast: { color: colors.textFaint, fontSize: fs(12), flex: 1, fontFamily: mono },
-  chev: { color: colors.textFaint, marginLeft: 'auto', fontSize: fs(13) },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  row: { borderTopWidth: 1, borderTopColor: colors.border },
-  rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  icon: { color: colors.textDim, fontSize: fs(13), width: 14, textAlign: 'center' },
-  toolName: { color: colors.accent, fontSize: fs(12), fontFamily: mono },
-  summary: { color: colors.textDim, fontSize: fs(12), fontFamily: mono, flex: 1 },
-  duration: { color: colors.textFaint, fontSize: fs(11) },
-  detail: { paddingHorizontal: 12, paddingBottom: 10, gap: 8 },
+  wrap: { marginVertical: 6, marginHorizontal: 16, alignSelf: 'stretch', borderRadius: 18, backgroundColor: colors.surface, overflow: 'hidden' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, minHeight: 44 },
+  headerText: { color: colors.text, fontSize: fs(14), fontWeight: '600', flex: 1, textAlign: isRTL ? 'right' : 'left' },
+  row: { borderTopWidth: 1, borderTopColor: colors.borderStrong },
+  rowHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  rowText: { flex: 1, gap: 1, direction: 'ltr' },
+  toolName: { color: colors.text, fontSize: fs(13), fontWeight: '600', fontFamily: mono, textAlign: 'left' },
+  summary: { color: colors.textDim, fontSize: fs(12), fontFamily: mono, textAlign: 'left' },
+  duration: { color: colors.textDim, fontSize: fs(12) },
+  detail: { paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
   block: { gap: 4 },
-  blockTitle: { color: colors.textFaint, fontSize: fs(11), textTransform: 'uppercase', letterSpacing: 0.5 },
-  code: { backgroundColor: colors.code, borderRadius: radius.sm, maxHeight: 260 },
-  codeText: { color: colors.codeText, fontFamily: mono, fontSize: fs(12), lineHeight: fs(17) },
+  blockTitle: { color: colors.textDim, fontSize: fs(12), fontWeight: '600' },
+  code: { backgroundColor: colors.code, borderRadius: 12, maxHeight: 260, direction: 'ltr' },
+  codeText: { color: colors.codeText, fontFamily: mono, fontSize: fs(12), lineHeight: fs(18) },
 }));

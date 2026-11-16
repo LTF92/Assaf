@@ -9,7 +9,7 @@ import { useSettings } from './settings';
 import {
   deleteConnectionData, loadCache, loadConnections, loadToken, saveCache, saveConnections, saveToken,
 } from './storage';
-import type { Connection } from './types';
+import type { AgentLook, Connection } from './types';
 
 interface Ctx {
   ready: boolean;
@@ -18,6 +18,7 @@ interface Ctx {
   add: (p: PairingPayload) => Promise<Connection>;
   remove: (id: string) => Promise<void>;
   rename: (id: string, label: string) => Promise<void>;
+  customize: (id: string, look: AgentLook | undefined) => Promise<void>;
 }
 
 const ConnectionsContext = createContext<Ctx | null>(null);
@@ -128,9 +129,17 @@ export function ConnectionsProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
+  const customize = useCallback(async (id: string, look: AgentLook | undefined) => {
+    setConnections((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, look } : c));
+      void saveConnections(next);
+      return next;
+    });
+  }, []);
+
   const value = useMemo<Ctx>(
-    () => ({ ready, connections, client: (id) => clients.current.get(id), add, remove, rename }),
-    [ready, connections, add, remove, rename],
+    () => ({ ready, connections, client: (id) => clients.current.get(id), add, remove, rename, customize }),
+    [ready, connections, add, remove, rename, customize],
   );
   return <ConnectionsContext.Provider value={value}>{children}</ConnectionsContext.Provider>;
 }
@@ -142,7 +151,7 @@ export function useConnections(): Ctx {
 }
 
 const EMPTY: ClientSnapshot = {
-  version: 0, status: 'offline', messages: [], typing: false, profileLabel: '', deviceName: '', role: 'owner',
+  version: 0, status: 'offline', messages: [], typing: false, profileLabel: '', deviceName: '', hostName: '', role: 'owner',
   hasOlder: false, lastError: null,
 };
 const noopSubscribe = () => () => {};
@@ -153,4 +162,15 @@ export function useChat(id: string | undefined): { client?: HermesClient; snap: 
   const c = id ? client(id) : undefined;
   const snap = useSyncExternalStore(c ? c.subscribe : noopSubscribe, c ? c.getSnapshot : () => EMPTY);
   return { client: c, snap };
+}
+
+/** The name the phone shows for an agent: the user's own name for it, else the bridge's label. */
+export function agentName(conn: Connection, profileLabel?: string): string {
+  return conn.look?.name?.trim() || profileLabel || conn.label;
+}
+
+/** ":8766" — the bridge port, which tells profiles on the same machine apart. */
+export function portOf(conn: Connection): string {
+  const m = conn.url.match(/:(\d+)(\/|$)/);
+  return m ? `:${m[1]}` : '';
 }

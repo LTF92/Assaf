@@ -1,10 +1,12 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Platform, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { t } from '../lib/i18n';
 import { useSettings } from '../lib/settings';
-import { makeStyles, radius } from '../lib/theme';
+import { colors, makeStyles } from '../lib/theme';
+import { Icon } from './Icon';
 import { Appear, PressScale } from './motion';
 
 /** True when the phone has some way to unlock (Face ID, fingerprint or at least a passcode). */
@@ -34,6 +36,7 @@ export async function authenticate(): Promise<boolean> {
 export function AppLock() {
   const { settings, ready } = useSettings();
   const s = useStyles();
+  const insets = useSafeAreaInsets();
   const [locked, setLocked] = useState(false);
   const leftAt = useRef<number | null>(null);
   const booted = useRef(false);
@@ -77,24 +80,27 @@ export function AppLock() {
   return (
     <View style={[StyleSheet.absoluteFill, s.screen]}>
       <Appear scale from={20} style={s.center}>
-        <View style={s.icon}>
-          <Text style={s.lockGlyph}>🔒</Text>
+        <Image source={require('../../assets/logo.png')} style={s.logo} accessibilityLabel={t.appName} />
+        <Text style={s.title}>{t.appName}</Text>
+        <View style={s.sub}>
+          <Icon name="lock" size={15} color={colors.textDim} strokeWidth={2} />
+          <Text style={s.subText}>{t.locked}</Text>
         </View>
-        <Text style={s.title}>{t.locked}</Text>
-        <PressScale haptic style={s.btn} onPress={unlock}>
-          <Text style={s.btnText}>{t.unlock}</Text>
-        </PressScale>
       </Appear>
+      <PressScale haptic style={[s.btn, { bottom: insets.bottom + 40 }]} onPress={unlock} accessibilityRole="button">
+        <Text style={s.btnText}>{t.unlock}</Text>
+      </PressScale>
     </View>
   );
 }
 
 const useStyles = makeStyles((colors, fs) => ({
   screen: { backgroundColor: colors.bg, zIndex: 100, elevation: 100, alignItems: 'center', justifyContent: 'center' },
-  center: { alignItems: 'center', gap: 18 },
-  icon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.accent },
-  lockGlyph: { fontSize: fs(34) },
-  title: { color: colors.text, fontSize: fs(20), fontWeight: '700' },
-  btn: { backgroundColor: colors.accent, paddingHorizontal: 28, paddingVertical: 13, borderRadius: radius.pill },
-  btnText: { color: colors.accentText, fontSize: fs(16), fontWeight: '800' },
+  center: { alignItems: 'center', gap: 14 },
+  logo: { width: 112, height: 112, borderRadius: 30 },
+  title: { color: colors.text, fontSize: fs(34), fontWeight: '700', marginTop: 10 },
+  sub: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  subText: { color: colors.textDim, fontSize: fs(15) },
+  btn: { position: 'absolute', left: 24, right: 24, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  btnText: { color: '#FFFFFF', fontSize: fs(17), fontWeight: '600' },
 }));

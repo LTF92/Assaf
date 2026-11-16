@@ -1,22 +1,27 @@
 import * as Clipboard from 'expo-clipboard';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { router } from 'expo-router';
-import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { t } from '../lib/i18n';
+import { Icon } from '../components/Icon';
+import { PressScale } from '../components/motion';
+import { isRTL, t } from '../lib/i18n';
 import { parsePairingLink } from '../lib/pairing';
 import { useConnections } from '../lib/store';
-import { colors, radius, makeStyles } from '../lib/theme';
+import { colors, makeStyles, mono } from '../lib/theme';
 
+/** Pair a Hermes profile: scan the QR the Mac shows, or paste the link copied there. */
 export default function AddConnection() {
   const s = useStyles();
+  const insets = useSafeAreaInsets();
+  const { paste } = useLocalSearchParams<{ paste?: string }>();
   const { add } = useConnections();
   const [permission, requestPermission] = useCameraPermissions();
   const [link, setLink] = useState('');
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
-  const scroll = useRef<ScrollViewInstance>(null);
 
   const pair = async (raw: string) => {
     if (busy.current) return;
@@ -47,20 +52,22 @@ export default function AddConnection() {
     await pair(text);
   };
 
+  useEffect(() => {
+    if (paste) void pasteFromClipboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paste]);
+
   return (
-    <KeyboardAvoidingView
-      style={s.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-    >
-      <ScrollView
-        ref={scroll}
-        contentContainerStyle={s.content}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-      >
-        <Text style={s.title}>{t.scanQr}</Text>
-        <View style={s.cameraBox}>
+    <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={[s.header, { paddingTop: Platform.OS === 'ios' ? 14 : insets.top + 8 }]}>
+        <Text style={s.h1} accessibilityRole="header">{t.pairTitle}</Text>
+        <PressScale style={s.close} onPress={() => router.back()} accessibilityLabel={t.cancel}>
+          <Icon name="close" size={20} color={colors.text} strokeWidth={2} />
+        </PressScale>
+      </View>
+      <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
+        <View style={s.cameraBox} accessibilityLabel={t.cameraPreview}>
           {permission?.granted ? (
             <CameraView
               style={StyleSheet.absoluteFill}
@@ -69,53 +76,94 @@ export default function AddConnection() {
             />
           ) : (
             <View style={s.permission}>
+              <Icon name="qr" size={40} color="#B88CFF" />
               <Text style={s.permText}>{t.cameraNeeded}</Text>
-              <Pressable style={s.btn} onPress={requestPermission}>
-                <Text style={s.btnText}>{t.allowCamera}</Text>
-              </Pressable>
+              <PressScale style={s.permBtn} onPress={requestPermission}>
+                <Text style={s.permBtnText}>{t.allowCamera}</Text>
+              </PressScale>
             </View>
           )}
+          {/* viewfinder corners */}
+          <View pointerEvents="none" style={s.frame}>
+            <View style={[s.corner, { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 18 }]} />
+            <View style={[s.corner, { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 18 }]} />
+            <View style={[s.corner, { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 18 }]} />
+            <View style={[s.corner, { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 18 }]} />
+          </View>
         </View>
-        <Pressable style={s.btnOutline} onPress={() => void pasteFromClipboard()}>
-          <Text style={s.btnOutlineText}>📋 {t.pasteFromClipboard}</Text>
-        </Pressable>
-        <Text style={s.or}>{t.pasteLink}</Text>
-        <TextInput
-          style={s.input}
-          value={link}
-          onChangeText={(v) => {
-            setLink(v);
-            setError(null);
-          }}
-          onFocus={() => setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 250)}
-          onSubmitEditing={() => link && void pair(link)}
-          returnKeyType="go"
-          placeholder="hermesmobile://pair?d=…"
-          placeholderTextColor={colors.textFaint}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {error ? <Text style={s.error}>{error}</Text> : null}
-        <Pressable style={[s.btn, !link && { opacity: 0.4 }]} disabled={!link} onPress={() => void pair(link)}>
-          <Text style={s.btnText}>{t.connect}</Text>
-        </Pressable>
+
+        <View style={{ gap: 6 }}>
+          <Text style={s.title}>{t.pointCamera}</Text>
+          <Text style={s.hint}>{t.pointCameraHint}</Text>
+        </View>
+
+        <View style={s.card}>
+          <View style={s.cardHead}>
+            <View style={s.cardIcon}><Icon name="clipboard" size={18} color={colors.link} /></View>
+            <Text style={s.cardTitle}>{t.clipboardCheck}</Text>
+          </View>
+          <PressScale haptic style={s.primary} onPress={() => void pasteFromClipboard()} accessibilityRole="button">
+            <Text style={s.primaryText}>{t.pasteAndPair}</Text>
+          </PressScale>
+          <TextInput
+            style={s.input}
+            value={link}
+            onChangeText={(v) => {
+              setLink(v);
+              setError(null);
+            }}
+            onSubmitEditing={() => link && void pair(link)}
+            returnKeyType="go"
+            placeholder="hermesmobile://pair?d=…"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {link ? (
+            <Pressable style={s.secondary} onPress={() => void pair(link)} accessibilityRole="button">
+              <Text style={s.secondaryText}>{t.connect}</Text>
+            </Pressable>
+          ) : null}
+          {error ? <Text style={s.error}>{error}</Text> : null}
+        </View>
+
+        <View style={s.note}>
+          <Icon name="lock" size={14} color={colors.textDim} />
+          <Text style={s.noteText}>{t.linkOnce}</Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const useStyles = makeStyles((colors, fs) => ({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 14, paddingBottom: 40 },
-  title: { color: colors.text, fontSize: fs(18), fontWeight: '700' },
-  cameraBox: { aspectRatio: 1, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  permission: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 20 },
-  permText: { color: colors.textDim, textAlign: 'center' },
-  or: { color: colors.textDim, marginTop: 6 },
-  input: { color: colors.text, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 12, fontSize: fs(14) },
-  error: { color: colors.danger },
-  btn: { backgroundColor: colors.accent, paddingVertical: 13, paddingHorizontal: 22, borderRadius: radius.pill, alignItems: 'center' },
-  btnText: { color: colors.accentText, fontWeight: '800', fontSize: fs(16) },
-  btnOutline: { borderWidth: 1, borderColor: colors.accent, paddingVertical: 12, paddingHorizontal: 22, borderRadius: radius.pill, alignItems: 'center' },
-  btnOutlineText: { color: colors.accent, fontWeight: '700', fontSize: fs(15) },
-}));
+const useStyles = makeStyles((colors, fs) => {
+  const start = isRTL ? 'right' : 'left';
+  return {
+    screen: { flex: 1, backgroundColor: colors.bg, direction: isRTL ? 'rtl' : 'ltr' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 8 },
+    h1: { color: colors.text, fontSize: fs(22), fontWeight: '700' },
+    close: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+    content: { paddingHorizontal: 20, gap: 18, paddingTop: 8 },
+    cameraBox: { aspectRatio: 1, borderRadius: 28, overflow: 'hidden', backgroundColor: '#16004A' },
+    permission: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
+    permText: { color: '#FFFFFF', textAlign: 'center', fontSize: fs(15) },
+    permBtn: { backgroundColor: '#FFFFFF', height: 44, paddingHorizontal: 20, borderRadius: 22, justifyContent: 'center' },
+    permBtnText: { color: '#16004A', fontWeight: '600', fontSize: fs(15) },
+    frame: { position: 'absolute', top: '18%', left: '18%', right: '18%', bottom: '18%' },
+    corner: { position: 'absolute', width: 44, height: 44, borderColor: '#FFFFFF' },
+    title: { color: colors.text, fontSize: fs(18), fontWeight: '700', textAlign: start },
+    hint: { color: colors.textDim, fontSize: fs(15), lineHeight: fs(22), textAlign: start },
+    card: { borderRadius: 20, backgroundColor: colors.surface, padding: 14, gap: 12 },
+    cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    cardIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+    cardTitle: { color: colors.text, fontSize: fs(16), fontWeight: '600', flex: 1, textAlign: start },
+    primary: { height: 50, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+    primaryText: { color: '#FFFFFF', fontSize: fs(16), fontWeight: '600' },
+    input: { height: 46, borderRadius: 14, backgroundColor: colors.bg, color: colors.text, paddingHorizontal: 14, fontSize: fs(13), fontFamily: mono, textAlign: 'left', writingDirection: 'ltr' },
+    secondary: { height: 46, borderRadius: 14, borderWidth: 1.5, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+    secondaryText: { color: colors.link, fontSize: fs(15), fontWeight: '600' },
+    error: { color: colors.danger, fontSize: fs(14), textAlign: start },
+    note: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+    noteText: { color: colors.textDim, fontSize: fs(13), textAlign: 'center' },
+  };
+});

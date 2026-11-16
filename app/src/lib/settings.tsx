@@ -23,7 +23,7 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
-  theme: 'dark',
+  theme: 'system',
   accent: 'gold',
   fontScale: 1,
   language: 'system',
@@ -76,7 +76,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setReady(true));
   }, []);
 
-  const mode: ThemeMode = settings.theme === 'system' ? (scheme === 'light' ? 'light' : 'dark') : settings.theme;
+  const mode: ThemeMode = settings.theme === 'system' ? (scheme === 'light' ? 'light' : 'dark') : settings.theme === 'light' ? 'light' : 'dark';
 
   // Apply synchronously during render so every child of this render already sees the new palette and strings.
   current = settings;

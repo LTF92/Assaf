@@ -58,12 +58,13 @@ function Shell() {
           contentStyle: { backgroundColor: c.bg },
         }}
       >
-        <Stack.Screen name="index" options={{ title: t.appName }} />
-        <Stack.Screen name="add" options={{ title: t.addConnection, presentation: 'modal' }} />
-        <Stack.Screen name="chat/[id]" options={{ title: '' }} />
-        <Stack.Screen name="connection/[id]" options={{ title: t.settings }} />
-        <Stack.Screen name="share/[id]" options={{ title: t.share }} />
-        <Stack.Screen name="settings" options={{ title: t.appSettings }} />
+        <Stack.Screen name="index" options={{ title: t.appName, headerShown: false }} />
+        <Stack.Screen name="inbox" options={{ title: t.inbox, headerShown: false }} />
+        <Stack.Screen name="add" options={{ title: t.pairTitle, presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="chat/[id]" options={{ title: '', headerShown: false }} />
+        <Stack.Screen name="connection/[id]" options={{ title: t.customize, presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="share/[id]" options={{ title: t.shareAgent }} />
+        <Stack.Screen name="settings" options={{ title: t.appSettings, headerShown: false }} />
       </Stack>
       <AppLock />
     </ConnectionsProvider>

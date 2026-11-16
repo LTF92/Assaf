@@ -4,9 +4,10 @@ import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { textDir, useSettings } from '../lib/settings';
-import { t } from '../lib/i18n';
+import { isRTL, t } from '../lib/i18n';
 import { colors, radius, makeStyles } from '../lib/theme';
 import type { Message } from '../lib/types';
+import { Icon } from './Icon';
 import { Markdown } from './Markdown';
 import { MediaView } from './MediaView';
 
@@ -71,6 +72,12 @@ function MessageItemImpl({ m, baseUrl, headers, onRetry }: Props) {
 
   return (
     <Pressable style={s.assistant} onLongPress={() => copy(m.text)} delayLongPress={350}>
+      {m.origin === 'scheduled' ? (
+        <View style={s.chip}>
+          <Icon name="clock" size={12} color={colors.textDim} strokeWidth={2.2} />
+          <Text style={s.chipText}>{t.scheduledMessage}</Text>
+        </View>
+      ) : null}
       <Markdown text={m.text} />
       {time}
     </Pressable>
@@ -80,12 +87,14 @@ function MessageItemImpl({ m, baseUrl, headers, onRetry }: Props) {
 export const MessageItem = memo(MessageItemImpl, (a, b) => a.m === b.m && a.baseUrl === b.baseUrl);
 
 const useStyles = makeStyles((colors, fs) => ({
-  userRow: { alignItems: 'flex-end', paddingHorizontal: 14, marginVertical: 6 },
-  userBubble: { maxWidth: '85%', backgroundColor: colors.userBubble, borderRadius: radius.xl, borderBottomRightRadius: 8, paddingHorizontal: 15, paddingVertical: 10 },
-  userText: { color: colors.userText, fontSize: fs(16), lineHeight: fs(22), fontWeight: '500' },
+  userRow: { alignItems: 'flex-end', paddingHorizontal: 16, marginVertical: 8 },
+  userBubble: { maxWidth: '80%', backgroundColor: colors.userBubble, borderRadius: 22, ...(isRTL ? { borderBottomLeftRadius: 6 } : { borderBottomRightRadius: 6 }), paddingHorizontal: 16, paddingVertical: 12 },
+  userText: { color: colors.userText, fontSize: fs(16), lineHeight: fs(24) },
   attLine: { color: colors.userText, opacity: 0.7, fontSize: fs(13), marginBottom: 4 },
   meta: { color: colors.textFaint, fontSize: fs(11), marginTop: 3 },
   metaStart: { alignSelf: 'flex-start' },
-  assistant: { paddingHorizontal: 18, marginVertical: 6 },
+  assistant: { paddingHorizontal: 16, marginVertical: 8 },
+  chip: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: colors.surface, marginBottom: 6 },
+  chipText: { color: colors.textDim, fontSize: fs(12), fontWeight: '600' },
   interim: { color: colors.textDim, fontSize: fs(14), fontStyle: 'italic' },
 }));
