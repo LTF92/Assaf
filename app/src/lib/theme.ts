@@ -29,13 +29,15 @@ const LIGHT = {
   link: '#6A00FF', okDot: '#12A150', ok: '#0B6B3A', danger: '#A3161B', track: '#D9C8FA', switchOff: '#8F86A8',
   scrim: 'rgba(22,0,74,0.5)', onSurface: '#FFFFFF',
 };
+// Dark: near-black with a violet undertone and layered greys, so violet stays the accent
+// (Grok / ChatGPT style) instead of every surface being purple.
 const DARK = {
-  bg: '#0D0029', surface: '#1B0652', surface2: '#2A1466', surface3: '#3A2380',
-  border: '#2A1466', borderStrong: '#3A2380',
-  text: '#FFFFFF', textDim: '#C9BEEA', textFaint: '#C9BEEA',
-  code: '#16004A', codeText: '#FFFFFF', codeInline: '#B88CFF',
-  link: '#B88CFF', okDot: '#2FD07F', ok: '#6FE7AC', danger: '#FF8A8F', track: '#3A2380', switchOff: '#5B4F80',
-  scrim: 'rgba(0,0,0,0.6)', onSurface: '#2A1466',
+  bg: '#0B0912', surface: '#17131F', surface2: '#201B2B', surface3: '#2B2438',
+  border: '#1E1A28', borderStrong: '#2B2438',
+  text: '#F4F1FA', textDim: '#A79FBC', textFaint: '#7F7795',
+  code: '#120F19', codeText: '#F4F1FA', codeInline: '#C4A2FF',
+  link: '#B88CFF', okDot: '#2FD07F', ok: '#5EDC9B', danger: '#FF7A80', track: '#2B2438', switchOff: '#3F3752',
+  scrim: 'rgba(0,0,0,0.65)', onSurface: '#201B2B',
 };
 
 export function buildColors(mode: ThemeMode, _accent?: AccentName) {
