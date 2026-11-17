@@ -379,3 +379,20 @@ def looks_like_progress(text: str) -> bool:
         if not s.startswith(_PROGRESS_PREFIXES) or len(s) > 400:
             return False
     return True
+
+def normalize_models(payload: dict[str, Any]) -> dict[str, Any]:
+    """``{current: {model, provider}, providers: [{slug, name, models: [id]}]}`` from Hermes's picker payload."""
+    providers = []
+    for row in payload.get("providers") or []:
+        if not isinstance(row, dict):
+            continue
+        ids = []
+        for m in row.get("models") or []:
+            mid = m if isinstance(m, str) else (m.get("id") or m.get("name")) if isinstance(m, dict) else None
+            if mid and mid not in ids:
+                ids.append(str(mid))
+        if ids:
+            providers.append({"slug": str(row.get("slug") or ""), "name": str(row.get("name") or row.get("slug") or ""),
+                              "models": ids[:200]})
+    return {"current": {"model": str(payload.get("model") or ""), "provider": str(payload.get("provider") or "")},
+            "providers": providers}

@@ -23,6 +23,8 @@ interface Props {
   /** Replying to a scheduled message: shown as a chip above the input. */
   reply?: { to: string; title: string; onCancel: () => void } | null;
   onSend: (text: string, attachments: Attachment[]) => void;
+  /** Opens the quick model menu (owner chats only). */
+  onModel?: () => void;
 }
 
 const COMMANDS = [
@@ -33,7 +35,7 @@ const COMMANDS = [
   { cmd: '/help', label: () => t.help },
 ];
 
-export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ disabled, placeholder, busy, reply, onSend }, ref) {
+export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ disabled, placeholder, busy, reply, onSend, onModel }, ref) {
   const s = useStyles();
   const [text, setText] = useState('');
   // follow the language being typed; empty input follows the app language
@@ -141,6 +143,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer({ di
             <Icon name="plus" size={20} color={menu === 'attach' ? '#FFFFFF' : colors.text} strokeWidth={2} />
           </View>
         </PressScale>
+        {onModel ? (
+          <PressScale style={s.iconBtn} to={0.88} onPress={onModel} hitSlop={6} accessibilityLabel={t.modelMenu}>
+            <Icon name="brain" size={20} color={colors.text} strokeWidth={1.8} />
+          </PressScale>
+        ) : null}
         <TextInput
           ref={input}
           style={[s.input, { textAlign: inputDir === 'rtl' ? 'right' : 'left', writingDirection: inputDir }]}

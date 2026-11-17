@@ -76,6 +76,12 @@ Every create or edit bumps the chat's `rev`, so a reconnecting phone sends `sinc
 and receives exactly the messages that were created **or changed** while it was away (streamed
 answers are edits of one message).
 
+### Models (owner only)
+
+`{type: "models", refresh?}` returns `{type: "models", current: {model, provider}, providers: [{slug, name, models: [id]}]}`,
+the configured catalog Hermes's own `/model` picker uses. The app's brain menu switches by sending
+a normal `/model <id> --provider <slug>` message (session-scoped), and shows that message as a small note.
+
 ### Rich blocks inside `text`
 
 Assistant markdown can carry cards in a fenced block whose language is `hamza`, holding JSON

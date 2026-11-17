@@ -8,6 +8,7 @@ import { CardView } from '../../components/CardView';
 import { Composer, type ComposerHandle } from '../../components/Composer';
 import { Icon } from '../../components/Icon';
 import { MessageItem } from '../../components/MessageItem';
+import { ModelMenu } from '../../components/ModelMenu';
 import { Appear, TypingDots } from '../../components/motion';
 import { StatusDot } from '../../components/StatusDot';
 import { ToolGroup } from '../../components/ToolGroup';
@@ -49,6 +50,7 @@ export default function ChatScreen() {
 
   // Replying to a scheduled report from the main channel: the report goes along as a quote.
   const [replyId, setReplyId] = useState<string | undefined>(replyParam);
+  const [modelMenu, setModelMenu] = useState(false);
   useEffect(() => setReplyId(replyParam), [replyParam]);
   const replyMsg = replyId ? snap.messages.find((m) => m.id === replyId) : undefined;
   const replyTitle = replyMsg ? splitTitle(replyMsg.text).title || replyMsg.text.replace(/\s+/g, ' ').slice(0, 80) : '';
@@ -173,8 +175,10 @@ export default function ChatScreen() {
           busy={busy}
           reply={replyMsg ? { to: name, title: replyTitle, onCancel: () => { setReplyId(undefined); router.setParams({ reply: undefined }); } } : null}
           onSend={send}
+          onModel={conn.role !== 'guest' ? () => setModelMenu(true) : undefined}
         />
       </View>
+      {conn.role !== 'guest' ? <ModelMenu visible={modelMenu} onClose={() => setModelMenu(false)} connId={conn.id} client={client} /> : null}
     </KeyboardAvoidingView>
   );
 }

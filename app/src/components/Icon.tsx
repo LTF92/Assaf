@@ -8,7 +8,7 @@ export type IconName =
   | 'back' | 'forward' | 'close' | 'plus' | 'send' | 'stop' | 'settings' | 'inbox' | 'laptop' | 'lock' | 'chat'
   | 'shield' | 'shieldCheck' | 'qr' | 'clipboard' | 'flash' | 'wrench' | 'check' | 'chevDown' | 'chevUp' | 'compose'
   | 'reply' | 'clock' | 'calendar' | 'bell' | 'image' | 'people' | 'copy' | 'trash' | 'alert'
-  | 'play' | 'info' | 'share' | 'x' | 'eye' | 'download' | 'pin';
+  | 'play' | 'info' | 'share' | 'x' | 'eye' | 'download' | 'pin' | 'brain' | 'star' | 'search';
 
 export function Icon({ name, size = 22, color, strokeWidth = 1.8, fill }: { name: IconName; size?: number; color: string; strokeWidth?: number; fill?: string }) {
   const p = { stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
@@ -46,6 +46,12 @@ export function Icon({ name, size = 22, color, strokeWidth = 1.8, fill }: { name
     case 'people': body = <><Circle {...p} cx={9} cy={9} r={3.2} /><Path {...p} d="M3.5 19a5.5 5.5 0 0 1 11 0" /><Path {...p} d="M16 6.2a3 3 0 0 1 0 5.6" /><Path {...p} d="M17.5 14.2A5 5 0 0 1 20.5 19" /></>; break;
     case 'copy': body = <><Rect {...p} x={8} y={8} width={11} height={12} rx={2} /><Path {...p} d="M5 15V6a2 2 0 0 1 2-2h8" /></>; break;
     case 'trash': body = <><Path {...p} d="M4 7h16" /><Path {...p} d="M9 7V4h6v3" /><Path {...p} d="M6 7l1 13h10l1-13" /></>; break;
+    case 'brain': body = <>
+      <Path {...p} d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <Path {...p} d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <Path {...p} d="M12 5v13M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" /></>; break;
+    case 'search': body = <><Circle {...p} cx={11} cy={11} r={6.5} /><Path {...p} d="M20 20l-4.2-4.2" /></>; break;
+    case 'star': body = <Path {...p} fill={fill ?? 'none'} d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />; break;
     case 'play': body = <Path {...p} fill={fill ?? 'none'} d="M8 5.5v13l11-6.5-11-6.5z" />; break;
     case 'info': body = <><Circle {...p} cx={12} cy={12} r={8.5} /><Path {...p} d="M12 11v5" /><Path {...p} d="M12 8v.01" /></>; break;
     case 'share': body = <><Path {...p} d="M12 15V4" /><Path {...p} d="M7.5 8L12 3.5 16.5 8" /><Path {...p} d="M6 12v7h12v-7" /></>; break;

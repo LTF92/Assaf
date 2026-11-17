@@ -9,6 +9,7 @@ import { colors, radius, makeStyles } from '../lib/theme';
 import type { Message } from '../lib/types';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
+import { modelLabel, parseModelCommand } from '../lib/models';
 import { MediaView } from './MediaView';
 
 interface Props {
@@ -32,6 +33,18 @@ function MessageItemImpl({ m, baseUrl, headers, onRetry }: Props) {
   const s = useStyles();
   const { settings } = useSettings();
   const time = settings.timestamps && !m.pending ? <Text style={[s.meta, m.role === 'user' ? null : s.metaStart]}>{clock(m.ts)}</Text> : null;
+  // A model switch from the brain menu reads as a small note, not as something the user typed.
+  const picked = m.role === 'user' ? parseModelCommand(m.text) : null;
+  if (picked) {
+    return (
+      <View style={s.noteRow}>
+        <View style={s.modelNote}>
+          <Icon name="brain" size={14} color={colors.textDim} />
+          <Text style={s.note}>{t.modelSwitchedTo(modelLabel(picked.id))}</Text>
+        </View>
+      </View>
+    );
+  }
   if (m.role === 'user') {
     const dir = textDir(m.text);
     return (
@@ -97,6 +110,7 @@ export const MessageItem = memo(MessageItemImpl, (a, b) => a.m === b.m && a.base
 
 const useStyles = makeStyles((colors, fs) => ({
   noteRow: { alignItems: 'center', paddingHorizontal: 24, paddingVertical: 6 },
+  modelNote: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 14, paddingStart: 12 },
   note: { color: colors.textDim, fontSize: fs(13), lineHeight: fs(19), textAlign: 'center', backgroundColor: colors.surface, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, overflow: 'hidden' },
   userRow: { alignItems: 'flex-end', paddingHorizontal: 16, marginVertical: 8 },
   userBubble: { maxWidth: '80%', backgroundColor: colors.userBubble, borderRadius: 22, ...(isRTL ? { borderBottomLeftRadius: 6 } : { borderBottomRightRadius: 6 }), paddingHorizontal: 16, paddingVertical: 12 },

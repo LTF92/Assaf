@@ -303,6 +303,8 @@ class MobileServer:
             return await self._on_admin(conn, device, kind, msg)
         if kind == "jobs":
             return await self._on_jobs(conn, device, msg)
+        if kind == "models":
+            return await self._on_models(conn, device, msg)
         if kind == "notify":
             prefs = msg.get("prefs")
             if isinstance(prefs, dict) and len(json.dumps(prefs)) < 2000:
@@ -370,6 +372,22 @@ class MobileServer:
             logger.exception("hermes-mobile: jobs request failed")
             return await self._reply_error(conn, "jobs_failed", ref)
         await self._safe_send(conn, json.dumps({"type": "jobs", "ref": ref, **result}, ensure_ascii=False, default=str))
+
+    async def _on_models(self, conn: ServerConnection, device: Device, msg: dict[str, Any]) -> None:
+        """Owner-only model catalog for the quick model menu: ``{type: models}`` -> ``{type: models, current, providers}``.
+        Switching itself is a normal ``/model <id> --provider <slug>`` message, so Hermes keeps one code path."""
+        ref = msg.get("ref")
+        if not device.is_owner:
+            return await self._reply_error(conn, "forbidden", ref)
+        handler = getattr(self.handlers, "on_models", None)
+        if handler is None:
+            return await self._reply_error(conn, "models_unavailable", ref)
+        try:
+            result = await handler(device, msg)
+        except Exception:
+            logger.exception("hermes-mobile: models request failed")
+            return await self._reply_error(conn, "models_failed", ref)
+        await self._safe_send(conn, json.dumps({"type": "models", "ref": ref, **result}, ensure_ascii=False, default=str))
 
     async def _on_send(self, conn: ServerConnection, device: Device, msg: dict[str, Any]) -> None:
         text = msg.get("text") if isinstance(msg.get("text"), str) else ""

@@ -38,7 +38,7 @@ from gateway.platforms.base import (
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.platforms._shared import coerce_port, get_scoped_secret
 
-from .core import OWNER_CHAT_ID, PRIVATE_KEY, ChatStore, Device, DeviceRegistry, looks_like_progress
+from .core import OWNER_CHAT_ID, PRIVATE_KEY, ChatStore, Device, DeviceRegistry, looks_like_progress, normalize_models
 from .jobs import JobPrefs, JobsService
 from .policy import FAILED, guest_block, guest_prompt, wants_push
 from .server import MobileServer
@@ -188,6 +188,14 @@ class HermesMobileAdapter(BasePlatformAdapter):
 
     async def on_jobs(self, device: Device, msg: dict[str, Any]) -> dict[str, Any]:
         return await asyncio.to_thread(self.jobs.handle, msg)
+
+    async def on_models(self, device: Device, msg: dict[str, Any]) -> dict[str, Any]:
+        """The configured model catalog (same source as the /model picker) for the app's model menu."""
+        def build() -> dict[str, Any]:
+            from hermes_cli.inventory import build_model_options_payload, load_picker_context
+            return build_model_options_payload(load_picker_context(), include_unconfigured=False,
+                                               refresh=bool(msg.get("refresh")))
+        return normalize_models(await asyncio.to_thread(build))
 
     def guest_limits(self, chat_id: str) -> Optional[Device]:
         """The guest device behind a guest chat, or None for the owner's chat."""
@@ -637,3 +645,4 @@ def register(ctx) -> None:
     with contextlib.suppress(Exception):
         from .cli import register_cli
         register_cli(ctx)
+

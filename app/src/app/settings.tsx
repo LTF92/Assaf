@@ -89,6 +89,14 @@ export default function SettingsScreen() {
           </Group>
         </Section>
 
+        <Section title={t.modelsTitle}>
+          <Group>
+            <Row label={t.favoriteModels} hint={t.favoriteModelsHint} onPress={() => router.push('/models')}>
+              <Value text={t.favCount(settings.favoriteModels.length)} />
+            </Row>
+          </Group>
+        </Section>
+
         <Section title={t.toolsApprovals}>
           <Group>
             <Row label={t.showTools}>

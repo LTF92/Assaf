@@ -71,6 +71,7 @@ function Shell() {
         <Stack.Screen name="jobs" options={{ title: t.jobsTitle, headerShown: false }} />
         <Stack.Screen name="job" options={{ title: t.editJob, presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="notifications" options={{ title: t.notifications, headerShown: false }} />
+        <Stack.Screen name="models" options={{ title: t.favoriteModels, headerShown: false }} />
         <Stack.Screen name="join" options={{ title: t.acceptInvite, presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: t.appSettings, headerShown: false }} />
       </Stack>

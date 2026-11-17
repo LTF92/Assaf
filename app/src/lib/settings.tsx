@@ -22,6 +22,15 @@ export interface Settings {
   notifications: boolean;
   /** Which pushes to get (sent to every bridge); per-agent mutes live on the connection. */
   notify: { approval: boolean; scheduled: boolean; errors: boolean; replies: boolean; quiet: { on: boolean; start: number; end: number } };
+  /** Models shown in the chat's quick model menu (the brain button). */
+  favoriteModels: FavoriteModel[];
+  /** The model last picked from the menu, per agent, so the menu can tick it. */
+  chosenModel: Record<string, FavoriteModel>;
+}
+
+export interface FavoriteModel {
+  id: string;
+  provider: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -39,6 +48,8 @@ export const DEFAULTS: Settings = {
   lockAfterMin: 0,
   notifications: true,
   notify: { approval: true, scheduled: true, errors: true, replies: true, quiet: { on: false, start: 23, end: 7 } },
+  favoriteModels: [],
+  chosenModel: {},
 };
 
 const KEY = 'hm.settings.v1';

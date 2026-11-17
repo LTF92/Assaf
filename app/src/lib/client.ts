@@ -331,6 +331,7 @@ export class HermesClient {
       case 'invite':
       case 'devices':
       case 'jobs':
+      case 'models':
         this.settle(msg.ref, msg);
         break;
       case 'pong':
@@ -452,6 +453,11 @@ export class HermesClient {
     return (await this.request<{ devices: DeviceInfo[] }>({ type: 'update_guest', device_id: deviceId, ...limits })).devices;
   }
 
+  // ── models (owner only): the catalog Hermes's /model picker uses; switching is a /model message
+  async models(refresh = false): Promise<ModelCatalog> {
+    return this.request<ModelCatalog>({ type: 'models', ...(refresh ? { refresh: true } : {}) }, 20000);
+  }
+
   // ── scheduled jobs (owner only)
   async jobs(): Promise<Job[]> {
     return (await this.request<{ jobs: Job[] }>({ type: 'jobs', op: 'list' })).jobs;
@@ -476,4 +482,9 @@ export class HermesClient {
   mediaHeaders(): Record<string, string> {
     return { Authorization: `Bearer ${this.token}` };
   }
+}
+
+export interface ModelCatalog {
+  current: { model: string; provider: string };
+  providers: { slug: string; name: string; models: string[] }[];
 }

@@ -186,11 +186,18 @@ class FakeHermes:
         self.workdir = workdir
         self.delay = delay
         self.profile, self.label = profile, label
+        self.model, self.provider = "claude-fable-5", "anthropic"
         self.cron = FakeCron()
         self.jobs = JobsService(JobPrefs(workdir / "jobs.json"), cron=self.cron)
 
     def profile_info(self):
         return {"name": self.profile, "label": self.label, "host": "MacBook Pro", "owner": "عبداللطيف"}
+
+    async def on_models(self, device, msg):
+        return {"current": {"model": self.model, "provider": self.provider}, "providers": [
+            {"slug": "anthropic", "name": "Anthropic", "models": ["claude-fable-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]},
+            {"slug": "openai-codex", "name": "OpenAI Codex", "models": ["gpt-6-astra", "gpt-6", "gpt-6-mini"]},
+            {"slug": "openrouter", "name": "OpenRouter", "models": ["google/gemini-3-pro", "deepseek/deepseek-v4", "qwen/qwen-4-max"]}]}
 
     async def on_jobs(self, device, msg):
         return self.jobs.handle(msg)
@@ -221,6 +228,13 @@ class FakeHermes:
         if text == "approve":
             await self._say(chat_id, kind="card", text="Run a dangerous command?", _private={"kind": "approval"},
                             card=APPROVAL)
+            return await s.publish_typing(chat_id, False)
+        if text.startswith("/model "):
+            parts = text.split()
+            self.model = parts[1]
+            if "--provider" in parts:
+                self.provider = parts[parts.index("--provider") + 1]
+            await self._say(chat_id, text=f"Switched to `{self.model}` ({self.provider}) for this session.")
             return await s.publish_typing(chat_id, False)
         if text == "blocks":
             await self._say(chat_id, text=BLOCKS_1)
