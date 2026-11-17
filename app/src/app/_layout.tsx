@@ -36,7 +36,10 @@ function NotificationOpener() {
   const { connections } = useConnections();
   const response = Notifications.useLastNotificationResponse();
   useEffect(() => {
-    const data = response?.notification.request.content.data as { profile?: string } | undefined;
+    // Expo-style pushes carry it in content.data; a direct APNs push in the raw payload.
+    const req = response?.notification.request;
+    const raw = (req?.trigger as { payload?: { profile?: string } } | null | undefined)?.payload;
+    const data = ((req?.content.data as { profile?: string } | undefined)?.profile ? req?.content.data : raw) as { profile?: string } | undefined;
     const target = data?.profile && connections.find((c) => c.profile === data.profile);
     if (target) router.push(`/chat/${target.id}`);
   }, [response, connections]);

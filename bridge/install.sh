@@ -35,6 +35,13 @@ echo "→ Installing the hamza-blocks skill"
 mkdir -p "$HOME_DIR/skills/mobile/hamza-blocks"
 cp "$SRC/skills/hamza-blocks/SKILL.md" "$HOME_DIR/skills/mobile/hamza-blocks/SKILL.md"
 
+# Push goes straight to Apple with the owner's APNs key, shared by every profile on this Mac.
+APNS_DIR="$HERMES_ROOT/apns"
+mkdir -p "$APNS_DIR" && chmod 700 "$APNS_DIR"
+if ! ls "$APNS_DIR"/AuthKey_*.p8 >/dev/null 2>&1 || [ ! -f "$APNS_DIR/apns.json" ]; then
+  echo "  (push off until you put AuthKey_<KEYID>.p8 and apns.json {\"team_id\": \"...\"} in $APNS_DIR)"
+fi
+
 echo "→ Enabling plugin"
 "${H[@]}" plugins enable hermes-mobile >/dev/null 2>&1 || "${H[@]}" plugins enable hermes_mobile || true
 

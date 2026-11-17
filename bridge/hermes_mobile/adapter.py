@@ -38,6 +38,7 @@ from gateway.platforms.base import (
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.platforms._shared import coerce_port, get_scoped_secret
 
+from .apns import APNs, PREFIX as APNS_PREFIX, apns_dir
 from .core import OWNER_CHAT_ID, PRIVATE_KEY, ChatStore, Device, DeviceRegistry, looks_like_progress, normalize_models
 from .jobs import JobPrefs, JobsService
 from .policy import FAILED, guest_block, guest_prompt, wants_push
@@ -145,6 +146,7 @@ class HermesMobileAdapter(BasePlatformAdapter):
         self.host = str(extra.get("host") or _env("HERMES_MOBILE_HOST", "0.0.0.0"))
         self.port = coerce_port(extra.get("port") or _env("HERMES_MOBILE_PORT", str(DEFAULT_PORT)), DEFAULT_PORT)
         self.label = str(extra.get("label") or _env("HERMES_MOBILE_LABEL") or "")
+        self.apns = APNs()
         self.push_enabled = str(extra.get("push", _env("HERMES_MOBILE_PUSH", "true"))).lower() in _TRUTHY
         self._dir = data_dir()
         self._profile = profile_name()
@@ -495,29 +497,41 @@ class HermesMobileAdapter(BasePlatformAdapter):
                                       "duration_ms": duration_ms})
         self._publish_threadsafe(msg)
 
-    # ── push notifications (Expo)
+    # ── push notifications: straight to Apple (APNs) with the owner's key; old Expo tokens still work
     def _schedule_push(self, chat_id: str, title: str, body: str, kind: str = "reply") -> None:
         if not self.push_enabled or self.server.has_active_viewer(chat_id):
             return
-        tokens = [d.push_token for d in self.registry.devices_for_chat(chat_id)
-                  if d.push_token and wants_push(d.notify, kind)]
-        if not tokens:
+        devices = [d for d in self.registry.devices_for_chat(chat_id) if d.push_token and wants_push(d.notify, kind)]
+        if not devices:
             return
-        body = " ".join((body or "").split())[:180]
-        payload = [{"to": t, "title": title[:80], "body": body or "…", "sound": "default",
-                    "priority": "high", "data": {"chat_id": chat_id, "profile": self._profile}} for t in tokens]
+        body = " ".join((body or "").split())[:180] or "…"
         with contextlib.suppress(RuntimeError):
-            asyncio.get_running_loop().create_task(self._send_push(payload))
+            asyncio.get_running_loop().create_task(self._send_push(devices, chat_id, title[:80], body))
 
-    @staticmethod
-    async def _send_push(payload: list[dict[str, Any]]) -> None:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post("https://exp.host/--/api/v2/push/send", json=payload,
-                                  headers={"Accept": "application/json"})
-        except Exception as exc:  # push is best-effort
-            logger.debug("[hermes_mobile] push failed: %s", exc)
+    async def _send_push(self, devices: list[Device], chat_id: str, title: str, body: str) -> None:
+        data = {"chat_id": chat_id, "profile": self._profile}
+        expo = []
+        for d in devices:
+            token = d.push_token or ""
+            if token.startswith(APNS_PREFIX):
+                try:
+                    result = await self.apns.send(token, title, body, data)
+                except Exception as exc:  # push is best-effort
+                    logger.debug("[hermes_mobile] apns push failed: %s", exc)
+                    continue
+                if result == "gone":
+                    self.registry.update(d.id, push_token=None)
+                elif result == "unconfigured":
+                    logger.info("[hermes_mobile] no APNs key in %s: push skipped", apns_dir())
+            else:
+                expo.append({"to": token, "title": title, "body": body, "sound": "default", "priority": "high", "data": data})
+        if expo:
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post("https://exp.host/--/api/v2/push/send", json=expo, headers={"Accept": "application/json"})
+            except Exception as exc:
+                logger.debug("[hermes_mobile] expo push failed: %s", exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────── tool hooks

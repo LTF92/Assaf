@@ -76,6 +76,12 @@ Every create or edit bumps the chat's `rev`, so a reconnecting phone sends `sinc
 and receives exactly the messages that were created **or changed** while it was away (streamed
 answers are edits of one message).
 
+### Push
+
+The phone sends `{type: "push_token", token}`. On iPhone the token is `apns:<hex>`: the bridge pushes
+straight to Apple with the owner's APNs key from `~/.hermes/apns/` (`AuthKey_<KEYID>.p8` plus
+`apns.json` `{"team_id": "…"}`), trying production then sandbox. Other tokens go through Expo.
+
 ### Models (owner only)
 
 `{type: "models", refresh?}` returns `{type: "models", current: {model, provider}, providers: [{slug, name, models: [id]}]}`,
