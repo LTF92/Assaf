@@ -47,14 +47,24 @@ function stylesFor(dir: Dir, colors: Colors, fs: (n: number) => number): MarkedS
   return out;
 }
 
+// Quote text as in the design: dimmer and a little smaller, inside a soft card.
+function quoteStyles(dir: Dir, fs: (n: number) => number): MarkedStyles {
+  const out = stylesFor(dir, colors, fs);
+  for (const k of TEXT_KEYS) out[k] = { ...(out[k] as object), color: colors.textDim, fontSize: fs(15), lineHeight: fs(24) };
+  out.strong = { ...(out.strong as object), color: colors.textDim };
+  out.paragraph = { marginVertical: 0, paddingVertical: 0 };
+  return out;
+}
+
 // Styles are rebuilt only when the theme or text size changes.
 let cacheKey = '';
-let cache: { styles: Record<Dir, MarkedStyles>; theme: object; scheme: 'dark' | 'light' } | null = null;
+let cache: { styles: Record<Dir, MarkedStyles>; quote: Record<Dir, MarkedStyles>; theme: object; scheme: 'dark' | 'light' } | null = null;
 function stylesForTheme(key: string, fs: (n: number) => number) {
   if (cacheKey !== key || !cache) {
     cacheKey = key;
     cache = {
       styles: { rtl: stylesFor('rtl', colors, fs), ltr: stylesFor('ltr', colors, fs) },
+      quote: { rtl: quoteStyles('rtl', fs), ltr: quoteStyles('ltr', fs) },
       theme: { colors: { code: colors.code, link: colors.accent, text: colors.text, border: colors.border } },
       scheme: colors.statusBar === 'dark' ? 'light' : 'dark',
     };
@@ -62,11 +72,11 @@ function stylesForTheme(key: string, fs: (n: number) => number) {
   return cache;
 }
 
-function Block({ text, dir, themeKey, fs }: { text: string; dir: Dir; themeKey: string; fs: (n: number) => number }) {
+function Block({ text, dir, themeKey, fs, quote }: { text: string; dir: Dir; themeKey: string; fs: (n: number) => number; quote?: boolean }) {
   const t = stylesForTheme(themeKey, fs);
-  const elements = useMarkdown(text, { colorScheme: t.scheme, styles: t.styles[dir], theme: t.theme as never });
+  const elements = useMarkdown(text, { colorScheme: t.scheme, styles: (quote ? t.quote : t.styles)[dir], theme: t.theme as never });
   return (
-    <View style={{ direction: dir }}>
+    <View style={[{ direction: dir }, quote && { backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginVertical: 6 }]}>
       {elements.map((el, i) => (
         <Fragment key={i}>{el}</Fragment>
       ))}
@@ -75,7 +85,7 @@ function Block({ text, dir, themeKey, fs }: { text: string; dir: Dir; themeKey: 
 }
 
 type Segment =
-  | { kind: 'md'; dir: Dir; raw: string }
+  | { kind: 'md'; dir: Dir; raw: string; quote?: boolean }
   | { kind: 'table'; data: TableData }
   | { kind: 'code'; code: string; lang?: string }
   | { kind: 'hamza'; blocks: HamzaBlock[] }
@@ -104,7 +114,11 @@ function segment(src: string, fallback: Dir, forced: Dir | null): Segment[] {
     buf = [];
   };
   for (const tok of toks) {
-    if (tok.type === 'table' && tok.header && tok.rows) {
+    if (tok.type === 'blockquote') {
+      flush();
+      const inner = tok.text ?? tok.raw.replace(/^ {0,3}> ?/gm, '');
+      out.push({ kind: 'md', dir: forced ?? detectDirection(inner) ?? fallback, raw: inner, quote: true });
+    } else if (tok.type === 'table' && tok.header && tok.rows) {
       flush();
       out.push({ kind: 'table', data: { header: tok.header.map((h) => h.text), rows: tok.rows.map((r) => r.map((c) => c.text)), align: tok.align } });
     } else if (tok.type === 'code') {
@@ -140,7 +154,7 @@ function MarkdownImpl({ text }: { text: string }) {
       {segs.map((g, i) => {
         switch (g.kind) {
           case 'md':
-            return <Block key={`${i}-md-${g.dir}`} text={g.raw} dir={g.dir} themeKey={key} fs={fs} />;
+            return <Block key={`${i}-md-${g.dir}`} text={g.raw} dir={g.dir} themeKey={key} fs={fs} quote={g.quote} />;
           case 'table':
             return <Table key={`${i}-t`} data={g.data} />;
           case 'code':

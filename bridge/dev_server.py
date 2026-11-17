@@ -123,6 +123,7 @@ BLOCKS_2 = """جهزت لك المطلوب:
   {"type": "images", "images": ["https://picsum.photos/id/1018/600/400", "https://picsum.photos/id/1015/600/400", "https://picsum.photos/id/1039/600/400", "https://picsum.photos/id/1043/600/400", "https://picsum.photos/id/1050/600/400"], "caption": "صور الموقع"},
   {"type": "file", "name": "report-q3.pdf", "size": "2.4 MB", "meta": "PDF · 12 صفحة"},
   {"type": "audio", "url": "https://example.com/note.m4a", "duration": "0:42"},
+  {"type": "video", "url": "https://example.com/demo.mp4", "duration": "2:15"},
   {"type": "choices", "question": "وش تبي أسوي بعدها؟", "options": [{"label": "أعد التشغيل", "primary": true}, "اعرض السجلات", "تجاهل"]},
   {"type": "form", "title": "حجز موعد صيانة", "fields": [{"name": "date", "label": "التاريخ", "type": "date", "value": "2026-11-20"},
      {"name": "window", "label": "الفترة", "type": "choice", "options": ["صباحًا", "مساءً"], "value": "صباحًا"},
