@@ -81,7 +81,7 @@ export default function AddConnection() {
             />
           ) : (
             <View style={s.permission}>
-              <Icon name="qr" size={40} color="#B88CFF" />
+              <Icon name="qr" size={40} color={colors.lavender} />
               <Text style={s.permText}>{t.cameraNeeded}</Text>
               <PressScale style={s.permBtn} onPress={requestPermission}>
                 <Text style={s.permBtnText}>{t.allowCamera}</Text>

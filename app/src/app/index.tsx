@@ -262,7 +262,7 @@ const useStyles = makeStyles((colors, fs) => {
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     chip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.bg, maxWidth: '100%' },
     chipText: { color: colors.text, fontSize: fs(13), fontWeight: '600' },
-    ownCard: { alignItems: 'center', gap: 10, paddingVertical: 22, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#B88CFF' },
+    ownCard: { alignItems: 'center', gap: 10, paddingVertical: 22, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.lavender },
     ownTitle: { color: colors.text, fontSize: fs(15), fontWeight: '600', textAlign: 'center' },
     ownHint: { color: colors.textDim, fontSize: fs(14), lineHeight: fs(22), textAlign: 'center' },
     ownBtn: { height: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.bg, justifyContent: 'center' },

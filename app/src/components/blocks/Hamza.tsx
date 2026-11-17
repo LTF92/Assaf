@@ -11,7 +11,6 @@ import { colors, makeStyles } from '../../lib/theme';
 import { Icon } from '../Icon';
 import { Segmented } from '../Segmented';
 
-const LAVENDER = '#B88CFF';
 const DEEP = '#16004A';
 const num = (n: number | string) => (typeof n === 'number' ? n.toLocaleString(lang === 'ar' ? 'ar' : 'en') : n);
 const open = (url?: string) => url && void Linking.openURL(url).catch(() => {});
@@ -132,7 +131,7 @@ function Chart({ b }: { b: B<'chart'> }) {
   if (b.kind === 'pie') {
     const total = values.reduce((a, v) => a + v, 0) || 1;
     const C = 2 * Math.PI * 28;
-    const palette = [colors.accent, LAVENDER, colors.statusBar === 'light' ? '#F4F1FA' : DEEP, '#D9C8FA', '#5B4F80'];
+    const palette = [colors.accent, colors.lavender, colors.statusBar === 'light' ? '#F4F1FA' : DEEP, '#D9C8FA', '#5B4F80'];
     let off = 0;
     return (
       <View style={[s.card, { gap: 8 }]}>
@@ -192,7 +191,7 @@ function Chart({ b }: { b: B<'chart'> }) {
         {values.map((v, i) => (
           <View key={i} style={s.barCol}>
             <Text style={s.barVal}>{num(v)}</Text>
-            <View style={[s.barRect, { height: Math.max(4, (80 * v) / max), backgroundColor: i === values.length - 1 ? colors.accent : LAVENDER }]} />
+            <View style={[s.barRect, { height: Math.max(4, (80 * v) / max), backgroundColor: i === values.length - 1 ? colors.accent : colors.lavender }]} />
             <Text style={s.barLbl} numberOfLines={1}>{b.labels?.[i] ?? num(i + 1)}</Text>
           </View>
         ))}
@@ -319,7 +318,7 @@ function Audio({ b }: { b: B<'audio'> }) {
     <View style={[s.card, s.rowCenter, { paddingVertical: 10, paddingHorizontal: 12, gap: 12 }]}>
       <Pressable style={s.play} onPress={() => open(b.url)} accessibilityLabel={t.playAudio}><Icon name="play" size={18} color="#FFFFFF" fill="#FFFFFF" /></Pressable>
       <View style={s.wave}>
-        {WAVE.map((h, i) => <View key={i} style={{ width: 3, height: h, borderRadius: 2, backgroundColor: i < 9 ? colors.accent : LAVENDER }} />)}
+        {WAVE.map((h, i) => <View key={i} style={{ width: 3, height: h, borderRadius: 2, backgroundColor: i < 9 ? colors.accent : colors.lavender }} />)}
       </View>
       {b.duration ? <Text style={s.small}>{b.duration}</Text> : null}
     </View>

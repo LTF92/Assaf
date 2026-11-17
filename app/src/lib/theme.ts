@@ -26,6 +26,7 @@ const LIGHT = {
   border: '#EDE6FA', borderStrong: '#E6DCF8',
   text: '#16004A', textDim: '#5B4F80', textFaint: '#5B4F80',
   code: '#16004A', codeText: '#FFFFFF', codeInline: '#6A00FF',
+  accent: BRAND.violet, lavender: '#B88CFF',
   link: '#6A00FF', okDot: '#12A150', ok: '#0B6B3A', danger: '#A3161B', track: '#D9C8FA', switchOff: '#8F86A8',
   scrim: 'rgba(22,0,74,0.5)', onSurface: '#FFFFFF',
 };
@@ -35,8 +36,10 @@ const DARK = {
   bg: '#0B0912', surface: '#17131F', surface2: '#201B2B', surface3: '#2B2438',
   border: '#1E1A28', borderStrong: '#2B2438',
   text: '#F4F1FA', textDim: '#A79FBC', textFaint: '#7F7795',
-  code: '#120F19', codeText: '#F4F1FA', codeInline: '#C4A2FF',
-  link: '#B88CFF', okDot: '#2FD07F', ok: '#5EDC9B', danger: '#FF7A80', track: '#2B2438', switchOff: '#3F3752',
+  code: '#120F19', codeText: '#F4F1FA', codeInline: '#C2ABE3',
+  // Softer violet on black: the full-strength brand violet glows too much on a dark screen.
+  accent: '#6E36C9', lavender: '#B297D8',
+  link: '#B297D8', okDot: '#2FD07F', ok: '#5EDC9B', danger: '#FF7A80', track: '#2B2438', switchOff: '#3F3752',
   scrim: 'rgba(0,0,0,0.65)', onSurface: '#201B2B',
 };
 
@@ -44,12 +47,11 @@ export function buildColors(mode: ThemeMode, _accent?: AccentName) {
   const b = mode === 'light' ? LIGHT : DARK;
   return {
     ...b,
-    accent: BRAND.violet,
-    accent2: BRAND.violet,
+    accent2: b.accent,
     accentSoft: b.surface,
-    accentGlow: hexA(BRAND.violet, 0.3),
+    accentGlow: hexA(b.accent, 0.3),
     accentText: '#FFFFFF',
-    userBubble: BRAND.violet,
+    userBubble: b.accent,
     userText: '#FFFFFF',
     dangerSoft: hexA(b.danger, 0.12),
     warn: b.link,

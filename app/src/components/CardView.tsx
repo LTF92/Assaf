@@ -60,7 +60,7 @@ function ApprovalSheet({ m, agentName, visible, onClose, onAction }: Props & { v
         </View>
         {card.command ? (
           <ScrollView style={s.cmd} contentContainerStyle={{ padding: 14 }}>
-            <Text selectable style={s.cmdText}><Text style={{ color: '#B88CFF' }}>$ </Text>{card.command}</Text>
+            <Text selectable style={s.cmdText}><Text style={{ color: colors.lavender }}>$ </Text>{card.command}</Text>
           </ScrollView>
         ) : <Markdown text={m.text} />}
         {card.description ? (
