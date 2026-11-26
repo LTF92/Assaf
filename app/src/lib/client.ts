@@ -98,6 +98,19 @@ export interface NotifyPrefs {
 const TYPING_TTL_MS = 8000;
 const PING_EVERY_MS = 25000;
 const PONG_TIMEOUT_MS = 10000;
+/** No socket open after this long: dial again in parallel (the first SYN may have left before the VPN route existed). */
+const DIAL_STALL_MS = 2500;
+/** Give up on one dial attempt after this long (iOS would otherwise wait ~75 s for the TCP timeout). */
+const DIAL_TIMEOUT_MS = 8000;
+/** At most this many dials in flight at once. */
+const MAX_DIALS = 3;
+/** Socket open but no welcome after this long: drop it and dial again. */
+const WELCOME_TIMEOUT_MS = 10000;
+/** Liveness probe when the app returns to the foreground on a socket that looks online. */
+const FOREGROUND_PONG_MS = 3000;
+/** Retry backoff: 0.5 s, 1 s, 2 s, 4 s, then every ~5 s. The bridge is a private server, so retrying often is cheap. */
+const RETRY_BASE_MS = 500;
+const RETRY_MAX_MS = 5000;
 
 function defaultId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -113,6 +126,10 @@ export class HermesClient {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
+  private stallTimer: ReturnType<typeof setTimeout> | null = null;
+  private welcomeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Sockets still dialing (not yet open). The first to open wins and the rest are closed. */
+  private dials = new Set<WebSocket>();
   private typingTimer: ReturnType<typeof setTimeout> | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<Listener>();
@@ -189,6 +206,7 @@ export class HermesClient {
   stop() {
     this.stopped = true;
     this.clearTimers();
+    this.abortDials();
     try {
       this.ws?.close();
     } catch {
@@ -201,34 +219,93 @@ export class HermesClient {
   /** Reconnect now (app came to the foreground, network changed, pull-to-refresh). */
   reconnect() {
     if (this.stopped) return this.start();
-    if (this.snapshot.status === 'online' || this.snapshot.status === 'unauthorized') return;
+    if (this.snapshot.status === 'unauthorized') return;
     this.retry = 0;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    if (this.ws) {
+      // Looks online, but the network may have changed under it (Tailscale switched on/off,
+      // Wi-Fi to cellular). Probe it and redial straight away if it doesn't answer.
+      if (this.welcomeTimer) return; // just opened, waiting for welcome
+      this.probe(FOREGROUND_PONG_MS);
+      return;
+    }
+    // Dialing or waiting to retry: start a fresh dial now. Dials already in flight may be stuck
+    // on a route that no longer exists; they keep going until they time out, and whichever opens first wins.
     this.open();
   }
 
   private clearTimers() {
-    [this.retryTimer, this.pongTimer, this.typingTimer].forEach((t) => t && clearTimeout(t));
+    [this.retryTimer, this.pongTimer, this.typingTimer, this.stallTimer, this.welcomeTimer].forEach((t) => t && clearTimeout(t));
     if (this.pingTimer) clearInterval(this.pingTimer);
-    this.retryTimer = this.pongTimer = this.typingTimer = null;
+    this.retryTimer = this.pongTimer = this.typingTimer = this.stallTimer = this.welcomeTimer = null;
     this.pingTimer = null;
   }
 
+  private abortDials() {
+    this.dials.forEach((d) => {
+      try {
+        d.close();
+      } catch {
+        /* ignore */
+      }
+    });
+    this.dials.clear();
+    if (this.stallTimer) clearTimeout(this.stallTimer);
+    this.stallTimer = null;
+  }
+
   private open() {
-    if (this.stopped) return;
+    if (this.stopped || this.ws) return;
+    if (this.dials.size >= MAX_DIALS) return;
     const WS = this.opts.WebSocketImpl ?? WebSocket;
-    this.emit({ status: 'connecting' });
+    if (this.snapshot.status !== 'connecting') this.emit({ status: 'connecting' });
     let ws: WebSocket;
     try {
       ws = new WS(`${this.conn.url}/ws`);
     } catch (e) {
       this.emit({ lastError: String(e) });
-      return this.scheduleRetry();
+      if (!this.dials.size) this.scheduleRetry();
+      return;
     }
-    this.ws = ws;
+    this.dials.add(ws);
+    const dialTimer = setTimeout(() => {
+      // never opened: abandon it (onclose follows and decides whether to retry)
+      if (this.dials.has(ws)) {
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+        this.dialFailed(ws);
+      }
+    }, DIAL_TIMEOUT_MS);
+    if (this.stallTimer) clearTimeout(this.stallTimer);
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = null;
+      if (!this.ws && this.dials.size) this.open();
+    }, DIAL_STALL_MS);
+
     ws.onopen = () => {
+      clearTimeout(dialTimer);
+      if (!this.dials.has(ws)) return;
+      this.dials.delete(ws);
+      if (this.ws || this.stopped) {
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      this.ws = ws;
+      this.abortDials(); // the others lost the race
       ws.send(JSON.stringify({ type: 'auth', token: this.token, since: this.rev }));
+      if (this.welcomeTimer) clearTimeout(this.welcomeTimer);
+      this.welcomeTimer = setTimeout(() => {
+        this.welcomeTimer = null;
+        if (ws === this.ws) this.dropSocket();
+      }, WELCOME_TIMEOUT_MS);
     };
     ws.onmessage = (ev: MessageEvent) => {
       if (ws !== this.ws) return;
@@ -242,22 +319,63 @@ export class HermesClient {
       /* onclose follows */
     };
     ws.onclose = (ev: CloseEvent) => {
+      clearTimeout(dialTimer);
+      if (this.dials.has(ws)) return this.dialFailed(ws);
       if (ws !== this.ws) return;
-      this.ws = null;
-      if (this.pingTimer) clearInterval(this.pingTimer);
-      this.pingTimer = null;
-      if (ev.code === 4003) {
-        this.emit({ status: 'unauthorized', typing: false });
-        return;
-      }
-      this.emit({ status: 'offline', typing: false });
-      this.scheduleRetry();
+      this.socketClosed(ev.code);
     };
+  }
+
+  /** A dial that never opened ended. Retry once nothing else is in flight. */
+  private dialFailed(ws: WebSocket) {
+    this.dials.delete(ws);
+    if (this.ws || this.dials.size || this.stopped) return;
+    if (this.stallTimer) clearTimeout(this.stallTimer);
+    this.stallTimer = null;
+    this.emit({ status: 'offline', typing: false });
+    this.scheduleRetry();
+  }
+
+  private socketClosed(code?: number) {
+    this.ws = null;
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    if (this.pongTimer) clearTimeout(this.pongTimer);
+    if (this.welcomeTimer) clearTimeout(this.welcomeTimer);
+    this.pingTimer = this.pongTimer = this.welcomeTimer = null;
+    if (code === 4003) {
+      this.emit({ status: 'unauthorized', typing: false });
+      return;
+    }
+    if (this.dials.size) return; // a newer dial is already on its way
+    this.emit({ status: 'offline', typing: false });
+    this.scheduleRetry();
+  }
+
+  /**
+   * Forget the current socket and dial again right away. A dead socket's close() can take a long
+   * time to report back (no network to send the close frame on), so don't wait for onclose.
+   */
+  private dropSocket() {
+    const ws = this.ws;
+    if (!ws) return;
+    ws.onclose = null;
+    ws.onmessage = null;
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    this.socketClosed();
+    if (!this.stopped && !this.ws && !this.dials.size) {
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      this.open();
+    }
   }
 
   private scheduleRetry() {
     if (this.stopped || this.retryTimer) return;
-    const base = Math.min(30000, 1000 * 2 ** this.retry);
+    const base = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** this.retry);
     this.retry = Math.min(this.retry + 1, 6);
     const delay = base / 2 + Math.random() * (base / 2);
     this.retryTimer = setTimeout(() => {
@@ -266,20 +384,19 @@ export class HermesClient {
     }, delay);
   }
 
+  /** Send a ping; if no pong comes back in time the socket is dead, so redial. */
+  private probe(timeoutMs: number) {
+    if (!this.sendRaw({ type: 'ping', t: Date.now() })) return this.dropSocket();
+    if (this.pongTimer) clearTimeout(this.pongTimer);
+    this.pongTimer = setTimeout(() => {
+      this.pongTimer = null;
+      this.dropSocket();
+    }, timeoutMs);
+  }
+
   private startPing() {
     if (this.pingTimer) clearInterval(this.pingTimer);
-    this.pingTimer = setInterval(() => {
-      this.sendRaw({ type: 'ping', t: Date.now() });
-      if (this.pongTimer) clearTimeout(this.pongTimer);
-      this.pongTimer = setTimeout(() => {
-        // dead socket (common after a phone switches networks): force a reconnect
-        try {
-          this.ws?.close();
-        } catch {
-          /* ignore */
-        }
-      }, PONG_TIMEOUT_MS);
-    }, PING_EVERY_MS);
+    this.pingTimer = setInterval(() => this.probe(PONG_TIMEOUT_MS), PING_EVERY_MS);
   }
 
   private sendRaw(payload: unknown): boolean {
@@ -293,6 +410,8 @@ export class HermesClient {
     switch (msg?.type) {
       case 'welcome':
         this.retry = 0;
+        if (this.welcomeTimer) clearTimeout(this.welcomeTimer);
+        this.welcomeTimer = null;
         this.emit({
           status: 'online', lastError: null,
           profileLabel: msg.profile?.label || this.conn.label,
