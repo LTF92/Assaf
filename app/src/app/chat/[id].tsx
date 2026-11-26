@@ -116,7 +116,7 @@ export default function ChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, fullScreenGestureEnabled: false }} />
       <View style={[s.header, { paddingTop: insets.top + 6 }]}>
         <Pressable style={s.iconBtn} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} accessibilityLabel={t.agents} hitSlop={4}>
           <Icon name="back" size={22} color={colors.text} strokeWidth={2} />

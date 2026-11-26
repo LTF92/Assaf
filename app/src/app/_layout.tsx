@@ -67,7 +67,9 @@ function Shell() {
         <Stack.Screen name="index" options={{ title: t.appName, headerShown: false }} />
         <Stack.Screen name="inbox" options={{ title: t.inbox, headerShown: false }} />
         <Stack.Screen name="add" options={{ title: t.pairTitle, presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="chat/[id]" options={{ title: '', headerShown: false }} />
+        {/* iOS 26 turns on a back swipe from anywhere on the screen, which steals sideways swipes from
+            tables and code blocks in messages. Chats keep the classic swipe from the screen edge. */}
+        <Stack.Screen name="chat/[id]" options={{ title: '', headerShown: false, fullScreenGestureEnabled: false }} />
         <Stack.Screen name="connection/[id]" options={{ title: t.customize, presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="share/[id]" options={{ title: t.shareAgent, headerShown: false }} />
         <Stack.Screen name="share/invite" options={{ title: t.invitePerson, headerShown: false }} />
